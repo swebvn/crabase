@@ -2141,7 +2141,13 @@ legend {
     font-size: var(--type-title-mobile);
   }
   .conversation {
-    padding: var(--space-4);
+    padding: var(--space-3);
+  }
+  .message {
+    margin-bottom: var(--space-5);
+  }
+  .message-group {
+    margin-bottom: var(--space-5);
   }
   .in-chat {
     padding: var(--space-3) var(--space-3)
