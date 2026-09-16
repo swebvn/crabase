@@ -52,20 +52,14 @@ export function App() {
   const [sidebarHidden, setSidebarHidden] = useState(
     () => localStorage.getItem("crabase-sidebar-hidden") === "true",
   );
-  const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTabId | "">(
-    () => {
-      const saved = localStorage.getItem("crabase-workspace-tab") || "";
-      return saved === "code" || saved.startsWith("terminal:") ? saved as WorkspaceTabId : "";
-    },
-  );
-  const [seenWorkspaceTabs, setSeenWorkspaceTabs] = useState<WorkspaceTabId[]>(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem("crabase-workspace-tabs") || "[]");
-      return Array.isArray(saved) ? Array.from(new Set(saved)).filter((tab): tab is WorkspaceTabId => tab === "artifacts" || tab === "code" || (typeof tab === "string" && tab.startsWith("terminal:") && tab.length > 9)) : [];
-    } catch { return []; }
-  });
-  useEffect(() => localStorage.setItem("crabase-workspace-tab", workspaceTab), [workspaceTab]);
-  const lastWorkspaceTab = useRef<WorkspaceTabId>(workspaceTab || "artifacts");
+  const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTabId | "start" | "">("");
+  const [seenWorkspaceTabs, setSeenWorkspaceTabs] = useState<WorkspaceTabId[]>([]);
+  const lastWorkspaceTab = useRef<WorkspaceTabId | "start">("start");
+  useEffect(() => {
+    setWorkspaceTab("");
+    setSeenWorkspaceTabs([]);
+    lastWorkspaceTab.current = "start";
+  }, [selected]);
   const pendingTerminalIds = useRef(new Set<string>());
   if (workspaceTab) lastWorkspaceTab.current = workspaceTab;
   const details = workspaceTab === "artifacts";
@@ -73,7 +67,6 @@ export function App() {
   const selectWorkspace = (tab: WorkspaceTab) => {
     setSeenWorkspaceTabs((seen) => {
       const nextSeen = seen.includes(tab) ? seen : [...seen, tab];
-      localStorage.setItem("crabase-workspace-tabs", JSON.stringify(nextSeen));
       return nextSeen;
     });
     setWorkspaceTab(tab);
@@ -89,7 +82,6 @@ export function App() {
       pendingTerminalIds.current.add(terminal.id);
       setSeenWorkspaceTabs((seen) => {
         const nextSeen = seen.includes(tab) ? seen : [...seen, tab];
-        localStorage.setItem("crabase-workspace-tabs", JSON.stringify(nextSeen));
         return nextSeen;
       });
       setWorkspaceTab(tab);
@@ -105,7 +97,6 @@ export function App() {
     }
     setSeenWorkspaceTabs((seen) => {
       const nextSeen = seen.filter((item) => item !== tab);
-      localStorage.setItem("crabase-workspace-tabs", JSON.stringify(nextSeen));
       if (workspaceTab === tab) setWorkspaceTab(nextSeen[0] || "");
       return nextSeen;
     });
@@ -129,7 +120,7 @@ export function App() {
     { id: "code", label: "Open code editor", keywords: ["editor"], run: () => selectWorkspace("code") },
     { id: "settings", label: "Open settings", run: () => navigate('/settings') },
     { id: "sidebar", label: "Toggle left sidebar", run: toggleSidebar },
-    { id: "right-sidebar", label: "Toggle right sidebar", keywords: ["workspace", "panel"], run: () => setWorkspace(lastWorkspaceTab.current === "code" || lastWorkspaceTab.current === "artifacts" ? lastWorkspaceTab.current : "artifacts") },
+    { id: "right-sidebar", label: "Toggle right sidebar", keywords: ["workspace", "panel"], run: () => workspaceTab ? setWorkspaceTab("") : restoreWorkspace() },
     { id: "archived", label: "Show or hide archived projects", keywords: ["archive"], run: () => window.dispatchEvent(new Event("crabase:toggle-archived")) },
   ];
   useEffect(() => {
@@ -143,20 +134,20 @@ export function App() {
         if (!next.includes(tab)) next.push(tab);
       }
       if (next.length === seen.length && next.every((tab, index) => tab === seen[index])) return seen;
-      localStorage.setItem("crabase-workspace-tabs", JSON.stringify(next));
       return next;
     });
-    if (workspaceTab.startsWith("terminal:") && !activeIds.has(workspaceTab) && !pendingTerminalIds.current.has(workspaceTab.slice("terminal:".length))) setWorkspaceTab("artifacts");
+    if (workspaceTab.startsWith("terminal:") && !activeIds.has(workspaceTab) && !pendingTerminalIds.current.has(workspaceTab.slice("terminal:".length))) setWorkspaceTab("start");
   }, [loaded, workspace.terminals, workspaceTab]);
   const restoreWorkspace = () => {
     const last = lastWorkspaceTab.current;
-    if (last === "code" && !project) return selectWorkspace("artifacts");
-    if (last.startsWith("terminal:") && !workspace.terminals.some((item) => item.id === last.slice("terminal:".length))) return setWorkspace("artifacts");
+    if (last === "start" || (last === "code" && !project) || (last.startsWith("terminal:") && !workspace.terminals.some((item) => item.id === last.slice("terminal:".length)))) {
+      if (workspace.artifacts.length) return selectWorkspace("artifacts");
+      return setWorkspaceTab("start");
+    }
     if (last === "code" || last === "artifacts") return selectWorkspace(last);
     setSeenWorkspaceTabs((seen) => {
       if (seen.includes(last)) return seen;
       const next = [...seen, last];
-      localStorage.setItem("crabase-workspace-tabs", JSON.stringify(next));
       return next;
     });
     setWorkspaceTab(last);
@@ -342,7 +333,7 @@ export function App() {
     localStorage.setItem("crabase-workspace-dock", next);
     return next;
   });
-  const visibleWorkspaceTab = workspaceTab || (lastWorkspaceTab.current === "code" && !project ? "artifacts" : lastWorkspaceTab.current);
+  const visibleWorkspaceTab = workspaceTab || (lastWorkspaceTab.current === "code" && !project ? "start" : lastWorkspaceTab.current);
   const workspacePanel = selected && loaded && <WorkspacePanel
     active={visibleWorkspaceTab}
     codeAvailable={!!project}

@@ -7,7 +7,7 @@ export type WorkspaceTab = "code" | "artifacts";
 export type WorkspaceTabId = WorkspaceTab | `terminal:${string}`;
 
 export function WorkspacePanel({ active, codeAvailable, dock, open, seenTabs, terminalTabs, onTab, onSelectTab, onAddTerminal, onRemoveTab, onClose, onDock, children }: {
-  active: WorkspaceTabId;
+  active: WorkspaceTabId | "start";
   codeAvailable: boolean;
   dock: "bottom" | "right";
   open: boolean;
@@ -80,6 +80,14 @@ export function WorkspacePanel({ active, codeAvailable, dock, open, seenTabs, te
       </IconButton>
       <IconButton label="Close workspace" onClick={onClose}><X size={17} /></IconButton>
     </header>
-    <div className="workspace-body">{children}</div>
+    <div className="workspace-body">
+      {active === "start" && <div className="workspace-start">
+        <p>Choose a workspace tab</p>
+        {codeAvailable && <button className="button secondary" onClick={() => onSelectTab("code")}>Open code</button>}
+        <button className="button secondary" onClick={onAddTerminal}>Open terminal</button>
+        <button className="button secondary" onClick={() => onSelectTab("artifacts")}>Open artifacts</button>
+      </div>}
+      {children}
+    </div>
   </aside>;
 }
