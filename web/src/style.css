@@ -2144,8 +2144,47 @@ legend {
     padding: var(--space-3) var(--space-3)
       max(var(--space-3), env(safe-area-inset-bottom));
   }
+  .composer-box {
+    padding: var(--space-3) var(--space-3) var(--space-2);
+    border: 1px solid var(--line);
+    border-radius: 24px;
+  }
+  .composer-box textarea {
+    min-height: 44px;
+    height: 44px;
+    margin-bottom: var(--space-2);
+    padding: 0 var(--space-2);
+  }
   .composer-controls {
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: var(--space-1);
+  }
+  .model-controls {
+    flex: 1;
+    flex-wrap: nowrap;
+    gap: var(--space-1);
+    overflow: hidden;
+  }
+  .model-picker {
+    flex: 1;
+    overflow: hidden;
+  }
+  .model-picker > .icon-button {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  .model-picker-effort {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .composer-branch,
+  .model-controls > .text-button {
+    display: none;
+  }
+  .send-controls {
+    margin-left: 0;
   }
   .human {
     max-width: 100%;
