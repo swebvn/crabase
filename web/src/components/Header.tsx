@@ -1,6 +1,6 @@
-import { Copy, FileCode2, PanelLeft, PanelRight, SquareTerminal } from "lucide-react";
+import { Copy, FileCode2, MoreHorizontal, PanelLeft, PanelRight, SquareTerminal } from "lucide-react";
 import type { Avatars, Chat, Project } from "../types";
-import { IconButton } from "./ui";
+import { IconButton, Menu } from "./ui";
 import { AvatarStack } from "./Avatar";
 export function Header({
   chat,
@@ -51,6 +51,14 @@ export function Header({
         {chat && <AvatarStack users={chat.participants} avatars={avatars} />}
       </div>
       <div className="topbar-actions">
+        <div className="mobile-header-menu">
+          <Menu label="Chat actions" icon={<MoreHorizontal size={18} />}>
+            {chat && <button onClick={copy}><Copy size={16} />Copy chat link</button>}
+            {chat && <button onClick={toggleTerminal}><SquareTerminal size={17} />{terminalOpen ? "Hide terminal" : "Show terminal"}</button>}
+            {project && <button onClick={toggleCode}><FileCode2 size={18} />{codeOpen ? "Hide code" : "Show code"}</button>}
+            <button onClick={toggleDetails}><PanelRight size={18} />{detailsOpen ? "Hide artifacts" : "Show artifacts"}</button>
+          </Menu>
+        </div>
         {chat && (
           <>
             <IconButton label="Copy chat link" onClick={copy}>

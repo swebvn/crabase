@@ -810,6 +810,7 @@ small {
   gap: var(--space-1);
   flex-shrink: 0;
 }
+.mobile-header-menu { display: none; }
 .sidebar-opener {
   display: none;
 }
@@ -2128,6 +2129,8 @@ legend {
     padding: 0 var(--space-3);
     height: 48px;
   }
+  .topbar-actions > :not(.mobile-header-menu) { display: none; }
+  .mobile-header-menu { display: block; }
   .home-page {
     padding: var(--space-6) var(--space-3);
   }
