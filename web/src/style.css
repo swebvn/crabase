@@ -2164,11 +2164,11 @@ legend {
     flex: 1;
     flex-wrap: nowrap;
     gap: var(--space-1);
-    overflow: hidden;
+    min-width: 0;
   }
   .model-picker {
     flex: 1;
-    overflow: hidden;
+    min-width: 0;
   }
   .model-picker > .icon-button {
     min-width: 0;
