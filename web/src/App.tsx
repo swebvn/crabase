@@ -55,14 +55,14 @@ export function App() {
   const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTabId | "">(
     () => {
       const saved = localStorage.getItem("crabase-workspace-tab") || "";
-      return saved === "details" ? "artifacts" : saved === "code" || saved === "artifacts" || saved.startsWith("terminal:") ? saved as WorkspaceTabId : "";
+      return saved === "code" || saved.startsWith("terminal:") ? saved as WorkspaceTabId : "";
     },
   );
   const [seenWorkspaceTabs, setSeenWorkspaceTabs] = useState<WorkspaceTabId[]>(() => {
     try {
-      const saved = JSON.parse(localStorage.getItem("crabase-workspace-tabs") || "[\"artifacts\"]");
-      return Array.isArray(saved) ? Array.from(new Set(saved)).filter((tab): tab is WorkspaceTabId => tab === "artifacts" || tab === "code" || (typeof tab === "string" && tab.startsWith("terminal:") && tab.length > 9)) : ["artifacts"];
-    } catch { return ["artifacts"]; }
+      const saved = JSON.parse(localStorage.getItem("crabase-workspace-tabs") || "[]");
+      return Array.isArray(saved) ? Array.from(new Set(saved)).filter((tab): tab is WorkspaceTabId => tab === "artifacts" || tab === "code" || (typeof tab === "string" && tab.startsWith("terminal:") && tab.length > 9)) : [];
+    } catch { return []; }
   });
   useEffect(() => localStorage.setItem("crabase-workspace-tab", workspaceTab), [workspaceTab]);
   const lastWorkspaceTab = useRef<WorkspaceTabId>(workspaceTab || "artifacts");
