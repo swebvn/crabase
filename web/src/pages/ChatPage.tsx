@@ -179,7 +179,7 @@ export function ChatPage({
                 ? "Waiting for the agent…"
                 : chat.status === "approval"
                   ? "Waiting for your approval…"
-                  : `${agentName} is working…`}
+                  : `${agentName} is cooking…`}
             </div>
           )}
         </div>
