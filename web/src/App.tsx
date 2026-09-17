@@ -170,7 +170,6 @@ export function App() {
   const restoreWorkspace = () => {
     const last = currentWorkspace.last;
     if (last === "start" || (last === "code" && !project) || (last.startsWith("terminal:") && !workspace.terminals.some((item) => item.id === last.slice("terminal:".length)))) {
-      if (workspace.artifacts.length) return selectWorkspace("artifacts");
       return setWorkspaceTab("start");
     }
     if (last === "code" || last === "artifacts") return selectWorkspace(last);
