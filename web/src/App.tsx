@@ -2,12 +2,13 @@ import type { Project, TerminalSession } from "./types";
 import { ProjectDialog } from "./components/ProjectDialog";
 import { WorktreeDialog } from "./components/WorktreeDialog";
 import { useAuth } from "./components/AuthGate";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Check } from "lucide-react";
 import { useRoute } from "./hooks/useRoute";
 import { useWorkspace } from "./hooks/useWorkspace";
 import { usePreferences } from "./hooks/usePreferences";
 import { fileSearchDirection, isSidebarShortcut } from "./lib/shortcuts";
+import { updateRecord } from "./lib/layout";
 import { chatPath } from "./lib/routes";
 import { Sidebar } from "./components/Sidebar";
 import { Header } from "./components/Header";
@@ -21,6 +22,25 @@ import { NewChatPage } from "./pages/NewChatPage";
 import { ChatPage } from "./pages/ChatPage";
 import { WorkspacePanel, type WorkspaceTab, type WorkspaceTabId } from "./components/WorkspacePanel";
 import type { Command } from "./lib/commands";
+
+type ThreadTab = WorkspaceTabId;
+type ThreadTabState = ThreadTab | "start";
+type ThreadWorkspaceLayout = {
+  tab: ThreadTabState | "";
+  seen: ThreadTab[];
+  last: ThreadTabState;
+  dock: "bottom" | "right";
+};
+
+function emptyThreadWorkspace(): ThreadWorkspaceLayout {
+  return {
+    tab: "",
+    seen: [],
+    last: "start",
+    dock: (localStorage.getItem("crabase-workspace-dock") as "bottom" | "right") || (localStorage.getItem("crabase-terminal-dock") as "bottom" | "right") || "right",
+  };
+}
+
 export function App() {
   const { user } = useAuth();
   const { route, navigate } = useRoute();
@@ -29,7 +49,7 @@ export function App() {
   }, [user.avatar_required, route.page, navigate]);
   const selected = route.page === "chat" ? route.id : "";
   const workspace = useWorkspace(selected);
-  const { data, live, loaded, messages, approvals, error, setError, request } =
+  const { data, live, loaded, messages, approvals, error, setError, request, terminalChatId } =
     workspace;
   const preferences = usePreferences(data.users);
   const [projectId, setProjectId] = useState("");
@@ -52,16 +72,24 @@ export function App() {
   const [sidebarHidden, setSidebarHidden] = useState(
     () => localStorage.getItem("crabase-sidebar-hidden") === "true",
   );
-  const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTabId | "start" | "">("");
-  const [seenWorkspaceTabs, setSeenWorkspaceTabs] = useState<WorkspaceTabId[]>([]);
-  const lastWorkspaceTab = useRef<WorkspaceTabId | "start">("start");
-  useEffect(() => {
-    setWorkspaceTab("");
-    setSeenWorkspaceTabs([]);
-    lastWorkspaceTab.current = "start";
-  }, [selected]);
+  const workspaceKey = selected || "new";
+  const [workspaceLayouts, setWorkspaceLayouts] = useState<Record<string, ThreadWorkspaceLayout>>({});
+  const currentWorkspace = workspaceLayouts[workspaceKey] || emptyThreadWorkspace();
+  const workspaceTab = currentWorkspace.tab;
+  const seenWorkspaceTabs = currentWorkspace.seen;
+  const updateCurrentWorkspace = useCallback((update: (current: ThreadWorkspaceLayout) => ThreadWorkspaceLayout) => {
+    setWorkspaceLayouts((layouts) => updateRecord(layouts, workspaceKey, emptyThreadWorkspace, update));
+  }, [workspaceKey]);
+  const setWorkspaceTab = useCallback((tab: ThreadTabState | "") => {
+    updateCurrentWorkspace((current) => ({ ...current, tab, last: tab || current.last }));
+  }, [updateCurrentWorkspace]);
+  const setSeenWorkspaceTabs = useCallback((update: ThreadTab[] | ((seen: ThreadTab[]) => ThreadTab[])) => {
+    updateCurrentWorkspace((current) => {
+      const seen = typeof update === "function" ? update(current.seen) : update;
+      return seen === current.seen ? current : { ...current, seen };
+    });
+  }, [updateCurrentWorkspace]);
   const pendingTerminalIds = useRef(new Set<string>());
-  if (workspaceTab) lastWorkspaceTab.current = workspaceTab;
   const details = workspaceTab === "artifacts";
   const code = workspaceTab === "code";
   const selectWorkspace = (tab: WorkspaceTab) => {
@@ -125,7 +153,7 @@ export function App() {
     { id: "archived", label: "Show or hide archived projects", keywords: ["archive"], run: () => window.dispatchEvent(new Event("crabase:toggle-archived")) },
   ];
   useEffect(() => {
-    if (!loaded) return;
+    if (!loaded || terminalChatId !== selected) return;
     const activeIds = new Set(workspace.terminals.map((item) => `terminal:${item.id}`));
     workspace.terminals.forEach((item) => pendingTerminalIds.current.delete(item.id));
     setSeenWorkspaceTabs((seen) => {
@@ -138,9 +166,9 @@ export function App() {
       return next;
     });
     if (workspaceTab.startsWith("terminal:") && !activeIds.has(workspaceTab) && !pendingTerminalIds.current.has(workspaceTab.slice("terminal:".length))) setWorkspaceTab("start");
-  }, [loaded, workspace.terminals, workspaceTab]);
+  }, [loaded, selected, terminalChatId, workspace.terminals, workspaceTab]);
   const restoreWorkspace = () => {
-    const last = lastWorkspaceTab.current;
+    const last = currentWorkspace.last;
     if (last === "start" || (last === "code" && !project) || (last.startsWith("terminal:") && !workspace.terminals.some((item) => item.id === last.slice("terminal:".length)))) {
       if (workspace.artifacts.length) return selectWorkspace("artifacts");
       return setWorkspaceTab("start");
@@ -155,13 +183,11 @@ export function App() {
   };
   const toggleTerminal = () => {
     if (terminal) return setWorkspaceTab("");
-    const last = lastWorkspaceTab.current;
+    const last = currentWorkspace.last;
     if (last.startsWith("terminal:") && workspace.terminals.some((item) => item.id === last.slice("terminal:".length))) setWorkspaceTab(last);
     else void openTerminal();
   };
-  const [workspaceDock, setWorkspaceDock] = useState<"bottom" | "right">(
-    () => (localStorage.getItem("crabase-workspace-dock") as "bottom" | "right") || (localStorage.getItem("crabase-terminal-dock") as "bottom" | "right") || "right",
-  );
+  const workspaceDock = currentWorkspace.dock;
   const [toast, setToast] = useState("");
   const chat = data.chats.find((item) => item.id === selected);
   const project = data.projects.find(
@@ -174,7 +200,6 @@ export function App() {
     setDialog("");
     clearDraft();
     setError("");
-    setWorkspaceTab("");
   }
   function newChat(id = "") {
     setFileSearch(false);
@@ -184,7 +209,6 @@ export function App() {
     setDialog("");
     clearDraft();
     setError("");
-    setWorkspaceTab("");
   }
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
@@ -329,12 +353,12 @@ export function App() {
       restore={() => void archive()}
     />
   );
-  const toggleWorkspaceDock = () => setWorkspaceDock((dock) => {
-    const next = dock === "bottom" ? "right" : "bottom";
+  const toggleWorkspaceDock = () => updateCurrentWorkspace((current) => {
+    const next = current.dock === "bottom" ? "right" : "bottom";
     localStorage.setItem("crabase-workspace-dock", next);
-    return next;
+    return { ...current, dock: next };
   });
-  const visibleWorkspaceTab = workspaceTab || (lastWorkspaceTab.current === "code" && !project ? "start" : lastWorkspaceTab.current);
+  const visibleWorkspaceTab = workspaceTab || (currentWorkspace.last === "code" && !project ? "start" : currentWorkspace.last);
   const workspacePanel = selected && loaded && <WorkspacePanel
     active={visibleWorkspaceTab}
     codeAvailable={!!project}

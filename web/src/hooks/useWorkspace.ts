@@ -19,6 +19,7 @@ export function useWorkspace(selected: string) {
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [terminals, setTerminals] = useState<TerminalSession[]>([]);
+  const [terminalChatId, setTerminalChatId] = useState(selected);
   const [error, setError] = useState("");
   const threadCache = useRef(new Map<string, { messages: Message[]; approvals: Approval[]; artifacts: Artifact[]; terminals: TerminalSession[] }>());
   const dismissedTerminals = useRef(new Set<string>());
@@ -188,6 +189,7 @@ export function useWorkspace(selected: string) {
   }, []);
   useEffect(() => {
     const cached = selected ? threadCache.current.get(selected) : undefined;
+    setTerminalChatId(selected);
     setMessages(cached?.messages || []);
     setApprovals(cached?.approvals || []);
     setArtifacts(cached?.artifacts || []);
@@ -252,6 +254,7 @@ export function useWorkspace(selected: string) {
     approvals,
     artifacts,
     terminals,
+    terminalChatId,
     error,
     setError,
     request,

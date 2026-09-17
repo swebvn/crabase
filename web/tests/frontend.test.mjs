@@ -64,13 +64,21 @@ test("avatar preferences resolve by author and reject executable URLs", () => {
 });
 
 test("sidebar resizing stays within its 200–500px bounds", async () => {
-  const { clampPanelWidth, clampSidebarWidth } = await import("../src/lib/layout.ts");
+  const { clampPanelWidth, clampSidebarWidth, updateRecord } = await import("../src/lib/layout.ts");
   assert.equal(clampSidebarWidth(150), 200);
   assert.equal(clampSidebarWidth(450), 450);
   assert.equal(clampSidebarWidth(900), 500);
   assert.equal(clampPanelWidth(200, 240, 500, 1200), 240);
   assert.equal(clampPanelWidth(420, 240, 500, 1200), 420);
   assert.equal(clampPanelWidth(900, 240, 500, 1200), 500);
+
+  const right = { tab: "terminal:1", seen: ["terminal:1"], dock: "right" };
+  const layouts = { first: right };
+  const next = updateRecord(layouts, "second", () => ({ tab: "", seen: [], dock: "right" }), (current) => ({ ...current, tab: "code" }));
+  assert.equal(layouts.first, right);
+  assert.equal(next.first, right);
+  assert.equal(next.second.tab, "code");
+  assert.equal(updateRecord(next, "second", () => ({ tab: "", seen: [], dock: "right" }), (current) => current), next);
 });
 
 test("sidebar shortcut accepts Command/Ctrl+B without repeats or conflicting modifiers", async () => {
