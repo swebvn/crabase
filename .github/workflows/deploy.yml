@@ -27,11 +27,17 @@ jobs:
             crab@217.15.167.49 <<'REMOTE'
           set -eu
           cd /home/crab/crabase
+          before=$(git rev-parse HEAD)
           git pull --ff-only
+          after=$(git rev-parse HEAD)
           export PATH="/home/crab/.nvm/versions/node/v24.21.0/bin:$PATH"
           /usr/local/bin/composer install --working-dir=server --no-dev --optimize-autoloader
           /home/crab/.local/share/pnpm/bin/pnpm install --frozen-lockfile
           /home/crab/.local/share/pnpm/bin/pnpm run build
           php server/vendor/bin/phinx migrate -c server/phinx.php
-          php server/start.php reload -g || php server/start.php start -d
+          if git diff --quiet "$before" "$after" -- server/app server/config server/support server/start.php server/composer.json server/composer.lock; then
+            php server/start.php reload -g || php server/start.php start -d
+          else
+            php server/start.php restart -d
+          fi
           REMOTE
