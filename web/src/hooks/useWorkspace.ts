@@ -19,7 +19,7 @@ export function useWorkspace(selected: string) {
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [terminals, setTerminals] = useState<TerminalSession[]>([]);
-  const [terminalChatId, setTerminalChatId] = useState(selected);
+  const [terminalChatId, setTerminalChatId] = useState("");
   const [error, setError] = useState("");
   const threadCache = useRef(new Map<string, { messages: Message[]; approvals: Approval[]; artifacts: Artifact[]; terminals: TerminalSession[] }>());
   const dismissedTerminals = useRef(new Set<string>());
@@ -189,7 +189,6 @@ export function useWorkspace(selected: string) {
   }, []);
   useEffect(() => {
     const cached = selected ? threadCache.current.get(selected) : undefined;
-    setTerminalChatId(selected);
     setMessages(cached?.messages || []);
     setApprovals(cached?.approvals || []);
     setArtifacts(cached?.artifacts || []);
@@ -228,6 +227,7 @@ export function useWorkspace(selected: string) {
         }
         const nextTerminals = (result.terminals || []).filter((terminal) => !dismissedTerminals.current.has(terminal.id));
         setTerminals(nextTerminals);
+        setTerminalChatId(id);
         if (id) threadCache.current.set(id, { messages: nextMessages, approvals: result.thread?.approvals || [], artifacts: result.thread?.artifacts || [], terminals: nextTerminals });
       })
       .catch(async (error) => {
