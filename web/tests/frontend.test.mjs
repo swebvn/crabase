@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { parseRoute, chatPath } from "../src/lib/routes.ts";
-import { applyMessagePatch } from "../src/lib/messages.ts";
+import { applyMessagePatch, nextStreamText } from "../src/lib/messages.ts";
 import { avatarUrl, validAvatarUrl } from "../src/lib/identity.ts";
 
 test("chat routes support direct loads without interpreting arbitrary paths", () => {
@@ -43,6 +43,13 @@ test("stream patches upsert, append and order messages without mutating previous
     ),
     [first, { id: 2, body: "complete" }],
   );
+});
+
+test("stream reveal advances safely without splitting code points", () => {
+  assert.equal(nextStreamText("Hello world", "Hello", 24), "Hello wor");
+  assert.equal(nextStreamText("Hello world", "Hello wor", 24), "Hello world");
+  assert.equal(nextStreamText("Hello 🦀!", "Hello ", 24), "Hello 🦀!");
+  assert.equal(nextStreamText("Rewritten", "Old", 24), "Rewritten");
 });
 
 test("avatar preferences resolve by author and reject executable URLs", () => {

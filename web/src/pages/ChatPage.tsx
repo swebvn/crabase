@@ -7,18 +7,26 @@ import { Avatar } from "../components/Avatar";
 import { Crab } from "../components/Crab";
 import { time } from "../lib/format";
 import { groupConversationMessages } from "../lib/messages";
+import { useSmoothText } from "../hooks/useSmoothText";
 const MessageItem = memo(function MessageItem({
   message,
   agentName,
   avatars,
   onFileMention,
+  streaming,
 }: {
   message: Message;
   agentName: string;
   avatars: Avatars;
   onFileMention?: (path: string) => void;
+  streaming: boolean;
 }) {
   const human = message.role === "user" || message.role === "note";
+  const body =
+    message.role === "guide"
+      ? message.body.replaceAll("Codex", agentName)
+      : message.body;
+  const visibleBody = useSmoothText(body, streaming);
   if (message.role === "tool")
     return (
       <article className="message tool">
@@ -34,7 +42,10 @@ const MessageItem = memo(function MessageItem({
       </article>
     );
   return (
-    <article className={`message ${human ? "human" : "agent"} ${message.role}`}>
+    <article
+      className={`message ${human ? "human" : "agent"} ${message.role}`}
+      aria-busy={streaming}
+    >
       <div className="message-author">
         {human ? (
           <Avatar user={message.author} avatars={avatars} />
@@ -52,9 +63,7 @@ const MessageItem = memo(function MessageItem({
       <div className="message-body">
         <AttachmentList files={message.attachments || []} />
         {(message.body || !message.attachments?.length) && <MessageContent onFileMention={onFileMention}>
-          {(message.role === "guide"
-            ? message.body.replaceAll("Codex", agentName)
-            : message.body) || "…"}
+          {visibleBody || "…"}
         </MessageContent>}
       </div>
     </article>
@@ -94,6 +103,13 @@ export function ChatPage({
   const messageGroups = useMemo(() => groupConversationMessages(messages), [messages]);
   const scroll = useRef<HTMLDivElement>(null);
   const follow = useRef(true);
+  const streamingId = useMemo(() => {
+    if (chat?.status !== "running") return null;
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      if (messages[index].role === "assistant") return messages[index].id;
+    }
+    return null;
+  }, [chat?.status, messages]);
   useEffect(() => {
     follow.current = true;
   }, [chat?.id]);
@@ -140,7 +156,11 @@ export function ChatPage({
             return (
               <div className={`message-group ${human ? "human" : "agent"}`} key={first.id}>
                 {group.map((message) => (
-                  <MessageItem key={message.id} {...{ message, agentName, avatars, onFileMention }} />
+                  <MessageItem
+                    key={message.id}
+                    {...{ message, agentName, avatars, onFileMention }}
+                    streaming={message.id === streamingId}
+                  />
                 ))}
                 <time className="message-time" dateTime={last.created_at}>
                   {time(last.created_at)}
