@@ -21,6 +21,7 @@ export function useWorkspace(selected: string) {
   const [terminals, setTerminals] = useState<TerminalSession[]>([]);
   const [error, setError] = useState("");
   const threadCache = useRef(new Map<string, { messages: Message[]; approvals: Approval[]; artifacts: Artifact[]; terminals: TerminalSession[] }>());
+  const dismissedTerminals = useRef(new Set<string>());
   const selectedRef = useRef(selected);
   selectedRef.current = selected;
   const socketRef = useRef<WebSocket | null>(null);
@@ -110,6 +111,11 @@ export function useWorkspace(selected: string) {
           return;
         }
         if (packet.type === "terminal" && packet.chat_id === selectedRef.current) {
+          const terminalId = packet.terminal?.id || packet.terminal_id;
+          if (terminalId && dismissedTerminals.current.has(terminalId)) {
+            if (packet.event === "closed") dismissedTerminals.current.delete(terminalId);
+            return;
+          }
           if (packet.event === "opened")
             setTerminals((previous) => [
               ...previous.filter((item) => item.id !== packet.terminal.id),
@@ -127,6 +133,7 @@ export function useWorkspace(selected: string) {
             ));
           if (packet.event === "closed")
             setTerminals((previous) => previous.filter((item) => item.id !== packet.terminal_id));
+          if (packet.event === "closed") dismissedTerminals.current.delete(packet.terminal_id);
           if (packet.event === "error") setError(packet.message || "Terminal stopped.");
           return;
         }
@@ -169,6 +176,16 @@ export function useWorkspace(selected: string) {
       socketRef.current?.close();
     };
   }, []);
+  const dismissTerminal = useCallback((id: string) => {
+    dismissedTerminals.current.add(id);
+    setTerminals((previous) => previous.filter((item) => item.id !== id));
+    for (const [chatId, thread] of threadCache.current) {
+      threadCache.current.set(chatId, {
+        ...thread,
+        terminals: thread.terminals.filter((item) => item.id !== id),
+      });
+    }
+  }, []);
   useEffect(() => {
     const cached = selected ? threadCache.current.get(selected) : undefined;
     setMessages(cached?.messages || []);
@@ -178,6 +195,7 @@ export function useWorkspace(selected: string) {
     setLoaded(!!cached);
     if (!live) return;
     const id = selected;
+    const latestCachedId = cached?.messages.at(-1)?.id;
     let stale = false;
     request<{
       state: Snapshot;
@@ -187,16 +205,28 @@ export function useWorkspace(selected: string) {
         approvals: Approval[];
       } | null;
       terminals: TerminalSession[];
-    }>("sync", { chat_id: id || null })
+    }>("sync", {
+      chat_id: id || null,
+      ...(id && latestCachedId ? { after: latestCachedId } : {}),
+    })
       .then((result) => {
         if (stale) return;
+        const nextMessages =
+          id && cached
+            ? applyMessagePatch(cached.messages, result.thread?.messages || [])
+            : result.thread?.messages || [];
         setData(result.state);
         setLoaded(true);
         setArtifacts(result.thread?.artifacts || []);
-        setMessages(result.thread?.messages || []);
+        setMessages(nextMessages);
         setApprovals(result.thread?.approvals || []);
-        setTerminals(result.terminals || []);
-        if (id) threadCache.current.set(id, { messages: result.thread?.messages || [], approvals: result.thread?.approvals || [], artifacts: result.thread?.artifacts || [], terminals: result.terminals || [] });
+        const serverTerminalIds = new Set((result.terminals || []).map((terminal) => terminal.id));
+        for (const terminalId of dismissedTerminals.current) {
+          if (!serverTerminalIds.has(terminalId)) dismissedTerminals.current.delete(terminalId);
+        }
+        const nextTerminals = (result.terminals || []).filter((terminal) => !dismissedTerminals.current.has(terminal.id));
+        setTerminals(nextTerminals);
+        if (id) threadCache.current.set(id, { messages: nextMessages, approvals: result.thread?.approvals || [], artifacts: result.thread?.artifacts || [], terminals: nextTerminals });
       })
       .catch(async (error) => {
         if (stale) return;
@@ -225,5 +255,6 @@ export function useWorkspace(selected: string) {
     error,
     setError,
     request,
+    dismissTerminal,
   };
 }

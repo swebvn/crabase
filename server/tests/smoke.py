@@ -187,6 +187,10 @@ if __name__=='__main__':
         second.call('message',{'chat_id':chat,'body':'Reply from second test user','mode':'note','user_id':users['user2']})
         both=first.call('sync',{'chat_id':chat})['thread']['messages']
         assert [m['author'] for m in both]==[a['name'] for a in accounts]
+        incremental=first.call('sync',{'chat_id':chat,'after':message_id})['thread']['messages']
+        assert incremental and all(m['id']>=message_id for m in incremental)
+        assert incremental[-1]['body']=='Reply from second test user'
+        first.call('sync',{'chat_id':chat,'after':'invalid'},error=True)
         # Publishing pushes the file list to subscribers and survives reconnect/sync.
         with tempfile.TemporaryDirectory() as temp:
             source=Path(temp)/'report.csv'; source.write_text('name,value\ntest,1\n')

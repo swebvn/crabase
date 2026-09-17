@@ -79,6 +79,7 @@ final class Codex
             $connection->close();
             return;
         }
+        $connection->maxSendBufferSize = 8 * 1024 * 1024;
         $connection->onBufferFull = fn () => $connection->close();
         $this->clients[$connection->id] = ['token'=>$token, 'chat_id' => null,'state' => null,'thread' => null];
     }
@@ -124,11 +125,22 @@ final class Codex
                 $result = ['ok' => true];
             } elseif ($m['action'] === 'sync') {
                 $chatId = empty($m['data']['chat_id']) ? null : Store::text($m['data']['chat_id'], 64);
+                $after = $m['data']['after'] ?? null;
+                if ($after !== null && (!is_int($after) || $after < 0)) {
+                    throw new \InvalidArgumentException('Invalid sync cursor.');
+                }
                 $thread = $chatId ? Store::thread($chatId) : null;
+                $resultThread = $thread;
+                if ($thread && $after !== null) {
+                    $resultThread['messages'] = array_values(array_filter(
+                        $thread['messages'],
+                        fn ($message) => (int)$message['id'] >= $after,
+                    ));
+                }
                 $state = ProjectAccess::snapshot(Store::snapshot(), $actor);
                 $state['pins'] = \app\model\User::findOrFail($actor['id'])->pinnedProjects()->whereIn('projects.id', array_column($state['projects'], 'id'))->pluck('projects.id')->all();
                 $this->clients[$connection->id] = ['token'=>$this->clients[$connection->id]['token'], 'chat_id' => $chatId,'state' => $state,'thread' => $thread];
-                $result = ['state' => $state,'thread' => $thread,'terminals' => $this->terminalList($chatId)];
+                $result = ['state' => $state,'thread' => $resultThread,'terminals' => $this->terminalList($chatId)];
             } elseif (str_starts_with($m['action'], 'terminal')) {
                 $result = $this->terminalAction($connection, $m['action'], $m['data']);
             } else {
@@ -722,7 +734,10 @@ final class Codex
 
     private function terminalList(?string $chatId): array
     {
-        return array_values(array_filter($this->terminals, fn ($terminal) => $terminal['chat_id'] === $chatId));
+        return array_values(array_map(
+            fn ($terminal) => array_merge($terminal, ['output' => substr($terminal['output'], -200000)]),
+            array_filter($this->terminals, fn ($terminal) => $terminal['chat_id'] === $chatId),
+        ));
     }
 
     private function terminalSend(array $message): void

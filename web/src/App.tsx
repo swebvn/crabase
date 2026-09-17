@@ -93,6 +93,7 @@ export function App() {
     if (tab.startsWith("terminal:")) {
       const id = tab.slice("terminal:".length);
       pendingTerminalIds.current.delete(id);
+      workspace.dismissTerminal(id);
       void request("terminalClose", { terminal_id: id }).catch((error) => setError((error as Error).message));
     }
     setSeenWorkspaceTabs((seen) => {
