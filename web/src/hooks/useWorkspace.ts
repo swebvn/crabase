@@ -53,7 +53,6 @@ export function useWorkspace(selected: string) {
               "Confirmation timed out. Check the chat before retrying; your action may have been saved.",
             ),
           );
-          socket.close();
         }, 15000);
         pending.current.set(id, {
           resolve: (result) => resolve(result as T),
