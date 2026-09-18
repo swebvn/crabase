@@ -440,7 +440,7 @@ small {
   padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-small);
   font-size: var(--type-label);
-  font-weight: var(--weight-medium);
+  font-weight: var(--weight-regular);
   text-align: left;
 }
 .project-chats {
@@ -2247,6 +2247,20 @@ legend {
   }
   .model-picker > .icon-button {
     min-height: 44px;
+  }
+}
+@media (max-width: 760px) {
+  .sidebar .chat-link,
+  .sidebar .project-label {
+    min-height: 36px;
+    padding: var(--space-1) var(--space-2);
+  }
+  .sidebar .section-label {
+    min-height: 28px;
+    padding-top: var(--space-1);
+  }
+  .sidebar .worktree-group {
+    margin-left: var(--space-1);
   }
 }
 @media (prefers-reduced-motion: reduce) {
