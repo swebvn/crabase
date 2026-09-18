@@ -2146,6 +2146,9 @@ legend {
   .message-group {
     margin-bottom: var(--space-5);
   }
+  .human .message-body {
+    padding: var(--space-2) var(--space-3);
+  }
   .in-chat {
     padding: var(--space-3) var(--space-3)
       max(var(--space-3), env(safe-area-inset-bottom));
