@@ -76,6 +76,7 @@ export type TerminalSession = {
   chat_id: string;
   title: string;
   output: string;
+  outputOffset?: number;
   running: boolean;
 };
 

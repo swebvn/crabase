@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Snapshot, Message, Approval, Artifact, TerminalSession } from "../types";
 import { applyMessagePatch } from "../lib/messages";
+import { appendTerminalOutput } from "../lib/terminal";
 const empty: Snapshot = {
   pins: [],
   users: [],
@@ -23,6 +24,8 @@ export function useWorkspace(selected: string) {
   const [error, setError] = useState("");
   const threadCache = useRef(new Map<string, { messages: Message[]; approvals: Approval[]; artifacts: Artifact[]; terminals: TerminalSession[] }>());
   const dismissedTerminals = useRef(new Set<string>());
+  const terminalOutputQueue = useRef(new Map<string, string>());
+  const terminalFlush = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const selectedRef = useRef(selected);
   selectedRef.current = selected;
   const socketRef = useRef<WebSocket | null>(null);
@@ -122,12 +125,21 @@ export function useWorkspace(selected: string) {
               ...previous.filter((item) => item.id !== packet.terminal.id),
               packet.terminal,
             ]);
-          if (packet.event === "output")
-            setTerminals((previous) => previous.map((item) =>
-              item.id === packet.terminal_id
-                ? { ...item, output: (item.output + packet.data).slice(-1000000) }
-                : item,
-            ));
+          if (packet.event === "output") {
+            const id = packet.terminal_id as string;
+            terminalOutputQueue.current.set(id, (terminalOutputQueue.current.get(id) || "") + packet.data);
+            if (!terminalFlush.current) {
+              terminalFlush.current = setTimeout(() => {
+                terminalFlush.current = undefined;
+                const queued = terminalOutputQueue.current;
+                terminalOutputQueue.current = new Map();
+                setTerminals((previous) => previous.map((item) => {
+                  const data = queued.get(item.id);
+                  return data ? appendTerminalOutput(item, data) : item;
+                }));
+              }, 16);
+            }
+          }
           if (packet.event === "exit" || packet.event === "error")
             setTerminals((previous) => previous.map((item) =>
               item.id === packet.terminal_id ? { ...item, running: false } : item,
@@ -173,6 +185,7 @@ export function useWorkspace(selected: string) {
     return () => {
       disposed = true;
       clearTimeout(retry);
+      if (terminalFlush.current) clearTimeout(terminalFlush.current);
       rejectPending();
       socketRef.current?.close();
     };
