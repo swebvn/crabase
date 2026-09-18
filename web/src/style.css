@@ -263,7 +263,7 @@ small {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 var(--space-1) var(--space-5);
+  padding: 0 var(--space-1) var(--space-2);
 }
 .brand {
   display: flex;
@@ -281,11 +281,11 @@ small {
 .nav-item,
 .chat-link {
   width: 100%;
-  min-height: 36px;
+  min-height: 32px;
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-2);
+  padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-small);
   text-align: left;
   font-size: var(--type-label);
@@ -297,9 +297,6 @@ small {
 .nav-item kbd {
   font-size: var(--type-meta);
   opacity: 0.8;
-}
-.chat-link {
-  padding: var(--space-1) var(--space-2);
 }
 .nav-item:hover,
 .chat-link:hover,
@@ -316,8 +313,8 @@ small {
   min-height: 0;
   overflow-y: auto;
   scrollbar-gutter: stable;
-  padding-right: var(--space-3);
-  padding-bottom: var(--space-4);
+  padding-right: var(--space-1);
+  padding-bottom: var(--space-2);
 }
 .section-label {
   position: relative;
@@ -325,7 +322,7 @@ small {
   align-items: center;
   justify-content: space-between;
   min-height: 32px;
-  padding: var(--space-5) 0 var(--space-2) var(--space-2);
+  padding: var(--space-2) 0 var(--space-1) var(--space-2);
   color: var(--muted);
   font-size: var(--type-meta);
   font-weight: var(--weight-medium);
@@ -439,8 +436,8 @@ small {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  min-height: 36px;
-  padding: var(--space-2);
+  min-height: 32px;
+  padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-small);
   font-size: var(--type-label);
   font-weight: var(--weight-medium);
@@ -448,8 +445,7 @@ small {
 }
 .project-chats {
   display: grid;
-  gap: 2px;
-  padding-bottom: var(--space-2);
+  padding-bottom: var(--space-1);
 }
 .worktree-group { margin-left: var(--space-2); min-width: 0; }
 .chat-row {
@@ -547,7 +543,7 @@ small {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-3) var(--space-1);
+  padding: var(--space-2) var(--space-1);
 }
 .profile-button {
   display: flex;
