@@ -501,17 +501,6 @@ small {
   font-size: var(--type-meta);
   text-align: left;
 }
-.load-earlier {
-  display: block;
-  min-height: 32px;
-  margin: 0 auto var(--space-4);
-  padding: var(--space-1) var(--space-2);
-  color: var(--muted);
-  font-size: var(--type-meta);
-}
-.load-earlier:hover:not(:disabled) {
-  color: var(--text);
-}
 .load-more:hover {
   color: var(--text);
 }

@@ -108,6 +108,7 @@ export function ChatPage({
 }) {
   const messageGroups = useMemo(() => groupConversationMessages(messages), [messages]);
   const scroll = useRef<HTMLDivElement>(null);
+  const historySentinel = useRef<HTMLDivElement>(null);
   const follow = useRef(true);
   const streamingId = useMemo(() => {
     if (chat?.status !== "running") return null;
@@ -132,6 +133,24 @@ export function ChatPage({
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
+  const loadEarlierPreservingPosition = () => {
+    const element = scroll.current;
+    const height = element?.scrollHeight || 0;
+    const top = element?.scrollTop || 0;
+    void loadEarlier().then(() => requestAnimationFrame(() => {
+      if (element) element.scrollTop = top + element.scrollHeight - height;
+    }));
+  };
+  useEffect(() => {
+    const sentinel = historySentinel.current;
+    const element = scroll.current;
+    if (!sentinel || !element || !hasMoreMessages) return;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting && !loadingEarlier) loadEarlierPreservingPosition();
+    }, { root: element, rootMargin: "160px 0px 0px" });
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [hasMoreMessages, loadingEarlier, loadEarlier]);
   return (
     <>
       <h1 className="sr-only">{chat?.title || "Chat"}</h1>
@@ -146,16 +165,9 @@ export function ChatPage({
         }}
       >
         <div className="conversation-inner">
-          {hasMoreMessages && <button className="load-earlier" onClick={() => {
-            const element = scroll.current;
-            const height = element?.scrollHeight || 0;
-            const top = element?.scrollTop || 0;
-            void loadEarlier().then(() => requestAnimationFrame(() => {
-              if (element) element.scrollTop = top + element.scrollHeight - height;
-            }));
-          }} disabled={loadingEarlier}>
-            {loadingEarlier ? "Loading earlier messages…" : "Load earlier messages"}
-          </button>}
+          {hasMoreMessages && <>
+            <div ref={historySentinel} aria-hidden="true" />
+          </>}
           {!loaded && (
             <p className="loading-state" role="status">
               <Loader2 size={16} className="spin" />
