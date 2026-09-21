@@ -89,6 +89,9 @@ export function ChatPage({
   decide,
   onFileMention,
   children,
+  hasMoreMessages,
+  loadingEarlier,
+  loadEarlier,
 }: {
   chat?: Chat;
   messages: Message[];
@@ -99,6 +102,9 @@ export function ChatPage({
   decide: (id: number, decision: "accept" | "decline") => void;
   onFileMention?: (path: string) => void;
   children: ReactNode;
+  hasMoreMessages: boolean;
+  loadingEarlier: boolean;
+  loadEarlier: () => Promise<void>;
 }) {
   const messageGroups = useMemo(() => groupConversationMessages(messages), [messages]);
   const scroll = useRef<HTMLDivElement>(null);
@@ -140,6 +146,16 @@ export function ChatPage({
         }}
       >
         <div className="conversation-inner">
+          {hasMoreMessages && <button className="load-earlier" onClick={() => {
+            const element = scroll.current;
+            const height = element?.scrollHeight || 0;
+            const top = element?.scrollTop || 0;
+            void loadEarlier().then(() => requestAnimationFrame(() => {
+              if (element) element.scrollTop = top + element.scrollHeight - height;
+            }));
+          }} disabled={loadingEarlier}>
+            {loadingEarlier ? "Loading earlier messages…" : "Load earlier messages"}
+          </button>}
           {!loaded && (
             <p className="loading-state" role="status">
               <Loader2 size={16} className="spin" />

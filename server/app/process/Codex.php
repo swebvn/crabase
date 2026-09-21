@@ -126,17 +126,15 @@ final class Codex
             } elseif ($m['action'] === 'sync') {
                 $chatId = empty($m['data']['chat_id']) ? null : Store::text($m['data']['chat_id'], 64);
                 $after = $m['data']['after'] ?? null;
+                $before = $m['data']['before'] ?? null;
+                $limit = $m['data']['limit'] ?? 150;
                 if ($after !== null && (!is_int($after) || $after < 0)) {
                     throw new \InvalidArgumentException('Invalid sync cursor.');
                 }
-                $thread = $chatId ? Store::thread($chatId) : null;
+                if ($before !== null && (!is_int($before) || $before < 0)) throw new \InvalidArgumentException('Invalid history cursor.');
+                if (!is_int($limit) || $limit < 1 || $limit > 500) throw new \InvalidArgumentException('Invalid message limit.');
+                $thread = $chatId ? Store::threadPage($chatId, $before, $after, $limit) : null;
                 $resultThread = $thread;
-                if ($thread && $after !== null) {
-                    $resultThread['messages'] = array_values(array_filter(
-                        $thread['messages'],
-                        fn ($message) => (int)$message['id'] >= $after,
-                    ));
-                }
                 $state = ProjectAccess::snapshot(Store::snapshot(), $actor);
                 $state['pins'] = \app\model\User::findOrFail($actor['id'])->pinnedProjects()->whereIn('projects.id', array_column($state['projects'], 'id'))->pluck('projects.id')->all();
                 $this->clients[$connection->id] = ['token'=>$this->clients[$connection->id]['token'], 'chat_id' => $chatId,'state' => $state,'thread' => $thread];

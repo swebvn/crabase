@@ -63,6 +63,23 @@ final class Store
         }
         return ['artifacts' => Artifacts::listing($id), 'chat' => $chat, 'messages' => Message::query()->where('chat_id', $id)->orderBy('id')->get()->toArray(), 'approvals' => Approval::query()->where('chat_id', $id)->whereNull('decision')->get()->toArray()];
     }
+    public static function threadPage(string $id, ?int $before = null, ?int $after = null, int $limit = 150): array
+    {
+        self::db();
+        $chat = Chat::query()->find($id)?->toArray();
+        if (!$chat) throw new InvalidArgumentException('Conversation not found.');
+        $query = Message::query()->where('chat_id', $id);
+        if ($before !== null) $query->where('id', '<', $before)->orderByDesc('id');
+        elseif ($after !== null) $query->where('id', '>=', $after)->orderBy('id');
+        else $query->orderByDesc('id');
+        $messages = ($after !== null ? $query : $query->limit($limit + 1))->get()->toArray();
+        $hasMore = $after === null && count($messages) > $limit;
+        if ($after === null) $messages = array_slice($messages, 0, $limit);
+        if ($before === null && $after === null || $before !== null) $messages = array_reverse($messages);
+        $thread = ['artifacts' => Artifacts::listing($id), 'chat' => $chat, 'messages' => $messages, 'approvals' => Approval::query()->where('chat_id', $id)->whereNull('decision')->get()->toArray()];
+        $thread['pagination'] = ['has_more' => $hasMore, 'oldest_id' => $messages ? (int)$messages[0]['id'] : null];
+        return $thread;
+    }
     public static function agentName(): string
     {
         $config = require dirname(__DIR__, 2).'/config/crabase.php';

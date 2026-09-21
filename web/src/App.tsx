@@ -49,7 +49,7 @@ export function App() {
   }, [user.avatar_required, route.page, navigate]);
   const selected = route.page === "chat" ? route.id : "";
   const workspace = useWorkspace(selected);
-  const { data, live, loaded, messages, approvals, error, setError, request, terminalChatId } =
+  const { data, live, loaded, messages, approvals, error, setError, request, terminalChatId, hasMoreMessages, loadingEarlier, loadEarlier } =
     workspace;
   const preferences = usePreferences(data.users);
   const [projectId, setProjectId] = useState("");
@@ -457,6 +457,9 @@ export function App() {
             ) : (
               <ChatPage
                 {...{ chat, messages, approvals, loaded }}
+                hasMoreMessages={hasMoreMessages}
+                loadingEarlier={loadingEarlier}
+                loadEarlier={loadEarlier}
                 agentName={data.agentName}
                 avatars={preferences.avatars}
                 decide={(id, decision) =>

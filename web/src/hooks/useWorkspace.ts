@@ -22,7 +22,9 @@ export function useWorkspace(selected: string) {
   const [terminals, setTerminals] = useState<TerminalSession[]>([]);
   const [terminalChatId, setTerminalChatId] = useState("");
   const [error, setError] = useState("");
-  const threadCache = useRef(new Map<string, { messages: Message[]; approvals: Approval[]; artifacts: Artifact[]; terminals: TerminalSession[] }>());
+  const [hasMoreMessages, setHasMoreMessages] = useState(false);
+  const [loadingEarlier, setLoadingEarlier] = useState(false);
+  const threadCache = useRef(new Map<string, { messages: Message[]; approvals: Approval[]; artifacts: Artifact[]; terminals: TerminalSession[]; hasMore: boolean }>());
   const dismissedTerminals = useRef(new Set<string>());
   const terminalOutputQueue = useRef(new Map<string, string>());
   const terminalFlush = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -206,6 +208,7 @@ export function useWorkspace(selected: string) {
     setApprovals(cached?.approvals || []);
     setArtifacts(cached?.artifacts || []);
     setTerminals(cached?.terminals || []);
+    setHasMoreMessages(cached?.hasMore || false);
     setLoaded(!!cached);
     if (!live) return;
     const id = selected;
@@ -217,11 +220,13 @@ export function useWorkspace(selected: string) {
         artifacts: Artifact[];
         messages: Message[];
         approvals: Approval[];
+        pagination?: { has_more: boolean; oldest_id: number | null };
       } | null;
       terminals: TerminalSession[];
     }>("sync", {
       chat_id: id || null,
       ...(id && latestCachedId ? { after: latestCachedId } : {}),
+      limit: 150,
     })
       .then((result) => {
         if (stale) return;
@@ -232,6 +237,10 @@ export function useWorkspace(selected: string) {
         setData(result.state);
         setLoaded(true);
         setArtifacts(result.thread?.artifacts || []);
+        const nextHasMore = latestCachedId
+          ? (cached?.hasMore || false)
+          : (result.thread?.pagination?.has_more || false);
+        setHasMoreMessages(nextHasMore);
         setMessages(nextMessages);
         setApprovals(result.thread?.approvals || []);
         const serverTerminalIds = new Set((result.terminals || []).map((terminal) => terminal.id));
@@ -241,7 +250,7 @@ export function useWorkspace(selected: string) {
         const nextTerminals = (result.terminals || []).filter((terminal) => !dismissedTerminals.current.has(terminal.id));
         setTerminals(nextTerminals);
         setTerminalChatId(id);
-        if (id) threadCache.current.set(id, { messages: nextMessages, approvals: result.thread?.approvals || [], artifacts: result.thread?.artifacts || [], terminals: nextTerminals });
+        if (id) threadCache.current.set(id, { messages: nextMessages, approvals: result.thread?.approvals || [], artifacts: result.thread?.artifacts || [], terminals: nextTerminals, hasMore: nextHasMore });
       })
       .catch(async (error) => {
         if (stale) return;
@@ -259,6 +268,22 @@ export function useWorkspace(selected: string) {
     };
   }, [selected, live, request]);
 
+  const loadEarlier = useCallback(async () => {
+    if (!selected || loadingEarlier || !hasMoreMessages) return;
+    const oldest = messages[0]?.id;
+    if (!oldest) return;
+    setLoadingEarlier(true);
+    try {
+      const result = await request<{ thread: { messages: Message[]; pagination?: { has_more: boolean } } }>("sync", { chat_id: selected, before: oldest, limit: 150 });
+      setMessages((previous) => applyMessagePatch([...result.thread.messages, ...previous]));
+      setHasMoreMessages(result.thread.pagination?.has_more || false);
+      const cached = threadCache.current.get(selected);
+      if (cached) threadCache.current.set(selected, { ...cached, messages: applyMessagePatch([...result.thread.messages, ...cached.messages]), hasMore: result.thread.pagination?.has_more || false });
+    } finally {
+      setLoadingEarlier(false);
+    }
+  }, [selected, loadingEarlier, hasMoreMessages, messages, request]);
+
   return {
     data,
     loaded,
@@ -268,6 +293,9 @@ export function useWorkspace(selected: string) {
     artifacts,
     terminals,
     terminalChatId,
+    hasMoreMessages,
+    loadingEarlier,
+    loadEarlier,
     error,
     setError,
     request,
