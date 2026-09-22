@@ -18,6 +18,13 @@ import { IconButton, Menu, MenuItem, MenuLabel } from "./ui";
 import { useProjectExpansion } from "../hooks/useProjectExpansion";
 import { clampSidebarWidth } from "../lib/layout";
 import { sortProjects, type ProjectSort } from "../lib/projects";
+const projectSortStorageKey = "crabase.project-sort";
+
+function storedProjectSort(): ProjectSort {
+  const value = localStorage.getItem(projectSortStorageKey);
+  return value === "updated" || value === "name" || value === "created" ? value : "created";
+}
+
 type Props = {
   projects: Project[];
   pins: string[];
@@ -141,9 +148,12 @@ export function Sidebar({
   }, []);
   const [width, setWidth] = useState(232);
   const [showAll, setShowAll] = useState<string[]>([]);
-  const [projectSort, setProjectSort] = useState<ProjectSort>("created");
+  const [projectSort, setProjectSort] = useState<ProjectSort>(storedProjectSort);
   const dragOffset = useRef(0);
   const { collapsed, projectsOpen, toggleProjects, toggleProject } = useProjectExpansion();
+  useEffect(() => {
+    localStorage.setItem(projectSortStorageKey, projectSort);
+  }, [projectSort]);
   const activeParent = projects.find((project) => project.id === activeProjectId)?.parent_id;
   useEffect(() => {
     if (!activeParent || !activeProjectId) return;
