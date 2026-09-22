@@ -68,7 +68,7 @@ export function ProjectWorkspacePanel({ project, request, theme, actions, fileSe
     paths: [],
     density: "compact",
     icons: { set: "complete", colored: false },
-    initialExpansion: 1,
+    initialExpansion: 0,
     search: false,
     flattenEmptyDirectories: true,
     onSelectionChange: (paths) => openFile(paths.at(-1) || ""),
