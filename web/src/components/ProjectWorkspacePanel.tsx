@@ -22,6 +22,7 @@ export function ProjectWorkspacePanel({ project, request, theme, actions, fileSe
   const [workspace, setWorkspace] = useState<ProjectWorkspace>();
   const [fileRequest, setFileRequest] = useState<{ path: string; token: number }>();
   const pendingReveal = useRef<string | undefined>(undefined);
+  const previousWorkspace = useRef<ProjectWorkspace | undefined>(undefined);
   const [files, setFiles] = useState<OpenFile[]>([]);
   const [activePath, setActivePath] = useState("");
   const [selectedChange, setSelectedChange] = useState<WorkspaceChange>();
@@ -100,7 +101,22 @@ export function ProjectWorkspacePanel({ project, request, theme, actions, fileSe
   }, [project.id, request, refreshToken]);
 
   useEffect(() => {
-    model.resetPaths(workspace?.paths || []);
+    const paths = workspace?.paths || [];
+    const expanded = new Set<string>();
+    if (previousWorkspace.current) {
+      for (const path of previousWorkspace.current.paths) {
+        const item = model.getItem(path);
+        if (item && "isExpanded" in item && item.isExpanded()) expanded.add(path);
+      }
+    }
+    model.resetPaths(paths);
+    if (previousWorkspace.current) {
+      for (const path of paths) {
+        const item = model.getItem(path);
+        if (item && "isExpanded" in item && item.isExpanded() !== expanded.has(path)) item.toggle();
+      }
+    }
+    if (workspace) previousWorkspace.current = workspace;
     model.setGitStatus([
       ...(workspace?.changes || []),
       ...(workspace?.ignored || []).map(path => ({ path, status: "ignored" as const })),
