@@ -273,10 +273,10 @@ final class Codex
     {
         $this->output .= json_encode($message, JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE) . "\n";
     }
-    private function rpc(string $method, array $params, callable $callback, ?int $jobId = null): void
+    private function rpc(string $method, array $params, callable $callback, ?int $jobId = null, ?int $relatedJobId = null): void
     {
         $id = ++$this->sequence;
-        $this->pending[$id] = ['callback' => $callback, 'job_id' => $jobId, 'method' => $method];
+        $this->pending[$id] = ['callback' => $callback, 'job_id' => $jobId, 'related_job_id' => $relatedJobId, 'method' => $method];
         $this->send(['id' => $id,'method' => $method,'params' => (object)$params]);
     }
 
@@ -371,6 +371,7 @@ final class Codex
                     $this->rpc('turn/interrupt', ['threadId' => $this->jobs[$jobId]['thread_id'],'turnId' => $row['turn_id']], fn ($result) => null, $jobId);
                 }
             }
+            $this->steerActiveJobs();
             Store::notify(Job::query()->where('status', 'queued')->where('cancel', 1)->update(['status'=>'cancelled']));
             Store::notify(Chat::query()->where('status', 'queued')
                 ->whereDoesntHave('jobs', fn ($query) => $query->whereIn('status', ['queued','running']))->update(['status'=>'idle']));
@@ -408,6 +409,37 @@ final class Codex
     private function nextJobs(int $limit): array
     {
         return Job::nextQueued($limit);
+    }
+
+    private function steerActiveJobs(): void
+    {
+        foreach (array_keys($this->jobs) as $activeId) {
+            $active = &$this->jobs[$activeId];
+            if (empty($active['thread_id']) || empty($active['turn_id']) || !empty($active['approvals']) || !empty($active['steering'])) {
+                unset($active);
+                continue;
+            }
+            $next = Job::query()->where('chat_id', $active['chat_id'])->where('status', 'queued')
+                ->where('cancel', 0)->whereNotNull('message_id')->orderBy('id')->first()?->toArray();
+            if (!$next) {
+                unset($active);
+                continue;
+            }
+            $active['steering'] = true;
+            $this->rpc('turn/steer', [
+                'threadId' => $active['thread_id'],
+                'expectedTurnId' => $active['turn_id'],
+                'input' => array_merge([
+                    ['type' => 'text', 'text' => \app\service\ParticipantContext::input($next)],
+                ], \app\service\Attachments::input($next)),
+            ], function () use ($activeId, $next) {
+                if (!isset($this->jobs[$activeId])) return;
+                Store::notify(Job::query()->whereKey($next['id'])->update(['status'=>'done']));
+                Store::event($next['chat_id'], Store::agentName().' received a steering message');
+                $this->jobs[$activeId]['steering'] = false;
+            }, $activeId, (int)$next['id']);
+            unset($active);
+        }
     }
 
     private function startJob(array $next): void
@@ -494,6 +526,15 @@ final class Codex
             }
             if (isset($m['error'])) {
                 $error = $m['error']['message'] ?? 'Codex request failed.';
+                if ($pending['method'] === 'turn/steer') {
+                    if ($pending['related_job_id'] !== null) {
+                        Store::notify(Job::query()->whereKey($pending['related_job_id'])->update(['status'=>'failed']));
+                    }
+                    if ($jobId !== null && isset($this->jobs[$jobId])) {
+                        $this->jobs[$jobId]['steering'] = false;
+                    }
+                    return;
+                }
                 if ($jobId !== null && $pending['method'] === 'turn/interrupt') {
                     $this->item($jobId, 'interrupt-error', 'error', Store::agentName(), 'Unable to stop this turn: '.$error);
                     return;
