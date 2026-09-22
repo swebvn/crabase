@@ -1280,6 +1280,7 @@ small {
   border-radius: var(--radius-panel);
   padding: var(--space-3) var(--space-4);
   text-align: left;
+  white-space: pre-wrap;
 }
 .message.error {
   color: var(--danger);
