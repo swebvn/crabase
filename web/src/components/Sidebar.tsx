@@ -242,7 +242,7 @@ export function Sidebar({
         <div className="brand-row">
           <button className="brand" onClick={() => newChat()}>
             <Crab size={26} />
-            <span>crabase</span>
+            <span>Console</span>
           </button>
           <IconButton label="Close sidebar" onClick={close}>
             <PanelLeft size={17} />
