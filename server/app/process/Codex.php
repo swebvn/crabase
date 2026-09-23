@@ -50,7 +50,6 @@ final class Codex
         $this->status('ready');
         \app\service\Attachments::cleanup();
         Timer::add(3600, fn () => \app\service\Attachments::cleanup());
-        Setting::put('models', '[]');
         // One persistent app-server, with independent turns for different chats.
         Timer::add(0.05, function () {
             $this->tick();

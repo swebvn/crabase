@@ -1,8 +1,6 @@
 import type { Project, TerminalSession } from "./types";
-import { ProjectDialog } from "./components/ProjectDialog";
-import { WorktreeDialog } from "./components/WorktreeDialog";
 import { useAuth } from "./components/AuthGate";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Check } from "lucide-react";
 import { useRoute } from "./hooks/useRoute";
 import { useWorkspace } from "./hooks/useWorkspace";
@@ -16,12 +14,15 @@ import { DetailsPanel } from "./components/DetailsPanel";
 import { CodePanel } from "./components/CodePanel";
 import { TerminalPanel } from "./components/TerminalPanel";
 import { Composer, type SendOptions } from "./components/Composer";
-import { SearchDialog } from "./components/WorkspaceDialogs";
-import { SettingsPage } from "./pages/SettingsPage";
 import { NewChatPage } from "./pages/NewChatPage";
 import { ChatPage } from "./pages/ChatPage";
 import { WorkspacePanel, type WorkspaceTab, type WorkspaceTabId } from "./components/WorkspacePanel";
 import type { Command } from "./lib/commands";
+
+const ProjectDialog = lazy(() => import("./components/ProjectDialog").then((module) => ({ default: module.ProjectDialog })));
+const WorktreeDialog = lazy(() => import("./components/WorktreeDialog").then((module) => ({ default: module.WorktreeDialog })));
+const SearchDialog = lazy(() => import("./components/WorkspaceDialogs").then((module) => ({ default: module.SearchDialog })));
+const SettingsPage = lazy(() => import("./pages/SettingsPage").then((module) => ({ default: module.SettingsPage })));
 
 type ThreadTab = WorkspaceTabId;
 type ThreadTabState = ThreadTab | "start";
@@ -386,7 +387,9 @@ export function App() {
     </div>)}
   </WorkspacePanel>;
   if (route.page === "settings" || user.avatar_required) return <main className="settings-shell">
-    <SettingsPage request={request} projects={data.projects} loaded={loaded} back={() => navigate('/')} {...preferences} />
+    <Suspense fallback={<p role="status">Loading settings…</p>}>
+      <SettingsPage request={request} projects={data.projects} loaded={loaded} back={() => navigate('/')} {...preferences} />
+    </Suspense>
   </main>;
   return (
     <div className="app-shell">
@@ -486,27 +489,31 @@ export function App() {
         </div>
       )}
       {dialog === "search" && (
-        <SearchDialog
-          chats={data.chats}
-          projects={data.projects}
-          commands={commands}
-          avatars={preferences.avatars}
-          open={open}
-          close={() => setDialog("")}
-        />
+        <Suspense fallback={<p role="status" className="loading-state">Loading search…</p>}>
+          <SearchDialog
+            chats={data.chats}
+            projects={data.projects}
+            commands={commands}
+            avatars={preferences.avatars}
+            open={open}
+            close={() => setDialog("")}
+          />
+        </Suspense>
       )}
       {dialog === "project" && !!user.admin && (
-        <ProjectDialog
-          request={request}
-          added={(id) => {
-            newChat(id);
-            setToast("Project opened");
-          }}
-          close={() => setDialog("")}
-        />
+        <Suspense fallback={<p role="status" className="loading-state">Loading projects…</p>}>
+          <ProjectDialog
+            request={request}
+            added={(id) => {
+              newChat(id);
+              setToast("Project opened");
+            }}
+            close={() => setDialog("")}
+          />
+        </Suspense>
       )}
-      {worktreeProject && !!user.admin && <WorktreeDialog project={worktreeProject} request={request}
-        close={() => setWorktreeProject(null)} added={(id) => { setWorktreeProject(null); newChat(id); setToast('Worktree created'); }} />}
+      {worktreeProject && !!user.admin && <Suspense fallback={<p role="status" className="loading-state">Loading worktree…</p>}><WorktreeDialog project={worktreeProject} request={request}
+        close={() => setWorktreeProject(null)} added={(id) => { setWorktreeProject(null); newChat(id); setToast('Worktree created'); }} /></Suspense>}
     </div>
   );
 }
