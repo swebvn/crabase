@@ -105,7 +105,7 @@ final class Store
         return [
             'users' => $users,
             'agentName' => self::agentName(),
-            'models' => json_decode(Setting::query()->whereKey('models')->value('value') ?? '[]', true),
+            'models' => ModelCatalog::all(),
             'projects' => Project::query()->select('*')->selectRaw('rowid AS created_order')->get()->toArray(),
             'chats' => $chats,
             'events' => Event::query()->from('events as e')->leftJoin('chats as c', 'c.id', '=', 'e.chat_id')->orderByDesc('e.id')->limit(50)->get(['e.*','c.title'])->toArray(),

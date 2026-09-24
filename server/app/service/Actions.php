@@ -3,7 +3,7 @@
 namespace app\service;
 
 use InvalidArgumentException;
-use app\model\{User, Project, Chat, Message, Job, Approval, Event, Setting};
+use app\model\{User, Project, Chat, Message, Job, Approval, Event};
 
 final class Actions
 {
@@ -19,7 +19,7 @@ final class Actions
             return ['model' => null,'effort' => null];
         }
         $model = Store::text($model, 200);
-        $models = json_decode(Setting::query()->whereKey('models')->value('value') ?? '[]', true);
+        $models = ModelCatalog::all();
         $selected = array_values(array_filter($models, fn ($entry) => $entry['model'] === $model))[0] ?? null;
         if (!$selected) {
             throw new InvalidArgumentException('This model is not in the current Codex catalog. Refresh the model list.');

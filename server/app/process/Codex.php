@@ -4,7 +4,7 @@ namespace app\process;
 
 use app\service\Store;
 use app\service\Auth;
-use app\service\ProjectAccess;
+use app\service\{ProjectAccess, ModelCatalog};
 use app\model\{Job, Chat, Message, Approval, Setting};
 use Workerman\Timer;
 use Workerman\Worker;
@@ -119,7 +119,7 @@ final class Codex
                 if (!$this->process) {
                     $this->boot();
                 } elseif ($this->ready) {
-                    $this->loadModels();
+                    $this->loadModels(true);
                 }
                 $result = ['ok' => true];
             } elseif ($m['action'] === 'sync') {
@@ -245,9 +245,9 @@ final class Codex
         $checks[] = ['name'=>'Codex app-server', 'status'=>$running && $this->ready ? 'ok' : 'warning',
             'detail'=>$running ? ($this->ready ? 'Initialized and running' : 'Starting; not ready yet') : ($this->bootAttempted ? 'Not running' : 'Not started yet')];
         try {
-            $models = json_decode(Setting::query()->whereKey('models')->value('value') ?? '[]', true);
+            $models = ModelCatalog::all();
             $checks[] = ['name'=>'Database', 'status'=>'ok', 'detail'=>'Read query succeeded'];
-            $checks[] = ['name'=>'Models', 'status'=>$models ? 'ok' : 'warning', 'detail'=>count($models ?: []).' cached models; provider requests not tested'];
+            $checks[] = ['name'=>'Models', 'status'=>$models ? 'ok' : 'warning', 'detail'=>count($models).' models in memory; refreshes every 30 minutes'];
             $checks[] = ['name'=>'Agent queue', 'status'=>'ok', 'detail'=>Job::query()->where('status', 'running')->count().' running · '.Job::query()->where('status', 'queued')->count().' queued'];
         } catch (\Throwable) {
             $checks[] = ['name'=>'Database', 'status'=>'error', 'detail'=>'Unable to read database'];
@@ -299,8 +299,10 @@ final class Codex
         });
     }
 
-    private function loadModels(?string $cursor = null, array $models = []): void
+    private function loadModels(bool $force = false, ?string $cursor = null, array $models = []): void
     {
+        if ($cursor === null && !$force && !ModelCatalog::expired()) return;
+        if ($cursor === null && !ModelCatalog::beginRefresh()) return;
         $params = ['limit' => 100,'includeHidden' => false];
         if ($cursor !== null) {
             $params['cursor'] = $cursor;
@@ -308,10 +310,12 @@ final class Codex
         $this->rpc('model/list', $params, function ($result) use ($models) {
             $models = array_merge($models, $result['data']);
             if (!empty($result['nextCursor'])) {
-                $this->loadModels($result['nextCursor'], $models);
+                $this->loadModels(false, $result['nextCursor'], $models);
                 return;
             }
-            Setting::put('models', json_encode($models, JSON_INVALID_UTF8_SUBSTITUTE));
+            ModelCatalog::replace($models);
+            ModelCatalog::finishRefresh();
+            Store::notify();
         });
     }
     private function tick(): void
@@ -352,6 +356,9 @@ final class Codex
                         $this->receive($message);
                     }
                 }
+            }
+            if ($this->ready && ModelCatalog::expired()) {
+                $this->loadModels();
             }
             foreach (array_keys($this->jobs) as $jobId) {
                 foreach ($this->jobs[$jobId]['approvals'] as $approvalId => $rpcId) {
@@ -395,6 +402,7 @@ final class Codex
                 $this->startJob($next);
             }
         } catch (\Throwable $error) {
+            ModelCatalog::finishRefresh();
             foreach (array_keys($this->jobs) as $jobId) {
                 $this->finish($jobId, 'failed', $error->getMessage());
             }

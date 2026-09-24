@@ -2,6 +2,7 @@
 require dirname(__DIR__) . '/vendor/autoload.php';
 use app\service\Store as S;
 use app\service\Actions as A;
+use app\service\ModelCatalog;
 $path = tempnam(sys_get_temp_dir(), 'crabase-models-');
 putenv('CRABASE_DB='.$path);
 function check(bool $ok): void { if (!$ok) throw new RuntimeException('Model selection check failed.'); }
@@ -19,7 +20,7 @@ try {
     S::run('INSERT INTO users VALUES (?,?,?,?)', ['named-user','Name, with comma','',gmdate('c')]);
     $users['Name, with comma'] = 'named-user';
     $models = [['model'=>'test-model','defaultReasoningEffort'=>'low','supportedReasoningEfforts'=>[['reasoningEffort'=>'low'],['reasoningEffort'=>'high']]]];
-    S::run("INSERT INTO settings VALUES ('models',?)", [json_encode($models)]);
+    ModelCatalog::replace($models);
     $chat = A::handle('create', ['title'=>'Queue options'])['id'];
     foreach (['high','low'] as $effort) A::handle('message', ['chat_id'=>$chat,'body'=>'test','user_id'=>$users['user1'],'mode'=>'agent','model'=>'test-model','effort'=>$effort]);
     check(S::all('SELECT model,effort FROM jobs ORDER BY id') === [['model'=>'test-model','effort'=>'high'],['model'=>'test-model','effort'=>'low']]);
@@ -121,7 +122,7 @@ try {
     }
     $models[0]['supportedReasoningEfforts'][] = ['reasoningEffort'=>'ultra'];
     $models[0]['defaultReasoningEffort'] = 'ultra';
-    S::run("UPDATE settings SET value=? WHERE key='models'", [json_encode($models)]);
+    ModelCatalog::replace($models);
     check(A::agentOptions(['model'=>'test-model'])['effort'] === 'low');
     try { A::agentOptions(['model'=>'test-model','effort'=>'ultra']); throw new RuntimeException('Ultra accepted'); }
     catch (InvalidArgumentException) {}
