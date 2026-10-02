@@ -68,8 +68,8 @@ try {
     denied(fn () => app\service\OAuth::consume($state,$browser));
     S::run('INSERT INTO oauth_flows VALUES (?,?,?,?)',[hash('sha256',$state),hash('sha256',$browser),'verifier',time()-1],false);
     denied(fn () => app\service\OAuth::consume($state,$browser));
-    denied(fn () => app\service\OAuth::account(['id'=>'provider-1','email'=>'admin@example.com']));
-    $passportProfile = ['id'=>'passport-new','name'=>'Admin','email'=>'new-passport@example.com','email_verified'=>true,'admin'=>true];
+    authCheck(app\service\OAuth::account(['id'=>'provider-1','email'=>'admin@example.com']) === $id);
+    $passportProfile = ['id'=>'passport-new','name'=>'Admin','email'=>'new-passport@example.com','email_verified'=>false,'admin'=>true];
     $passportId = app\service\OAuth::account($passportProfile);
     $passportAccount = app\model\Account::query()->find($passportId);
     authCheck($passportAccount->admin === 0 && $passportAccount->enabled === 1);
@@ -77,7 +77,8 @@ try {
     authCheck(app\service\OAuth::account($passportProfile) === $passportId);
     authCheck(A::user(A::session($passportId))['id'] === $passportId);
     $count = app\model\Account::query()->count();
-    denied(fn () => app\service\OAuth::account(['id'=>'unverified','email'=>'unverified@example.com']));
+    denied(fn () => app\service\OAuth::account(['id'=>'missing-email']));
+    denied(fn () => app\service\OAuth::account(['id'=>'invalid-email','email'=>'invalid']));
     authCheck(app\model\Account::query()->count() === $count);
     app\model\Account::query()->whereKey($passportId)->update(['enabled'=>0]);
     denied(fn () => app\service\OAuth::account($passportProfile));

@@ -88,9 +88,7 @@ final class OAuth
             return $linked['user_id'];
         }
         $email = $profile['email'] ?? null;
-        $verified = ($profile['email_verified'] ?? null) === true ||
-            (is_string($profile['email_verified_at'] ?? null) && strtotime($profile['email_verified_at']) !== false);
-        if (!$verified || !is_string($email) || !filter_var($email,FILTER_VALIDATE_EMAIL)) throw new InvalidArgumentException('A verified email is required to link your account. Use password login or contact your administrator.');
+        if (!is_string($email) || !filter_var($email,FILTER_VALIDATE_EMAIL)) throw new InvalidArgumentException('A valid email is required to link your account. Use password login or contact your administrator.');
         return \support\Db::transaction(function () use ($email,$subject,$profile) {
             $account = Account::query()->where('email', strtolower(trim($email)))->first(['user_id','enabled']);
             if ($account && !$account->enabled) throw new InvalidArgumentException('Your account is disabled. Contact your administrator.');
