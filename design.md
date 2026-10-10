@@ -93,7 +93,7 @@ Use 6–8px radii for rows and controls, 16–20px for the composer and dialogs,
 
 - ⌘B (Ctrl+B on Windows/Linux) toggles the sidebar; on mobile it toggles the drawer.
 
-- Desktop sidebar width is draggable from its right edge, from 200px to a maximum of 500px (default 232px). The separator supports Left/Right arrows and Home/End. Mobile keeps the fixed-width drawer.
+- Desktop sidebar width is draggable from its right edge, from 200px to a maximum of 500px (default 232px). The separator supports Left/Right arrows and Home/End. Persist the width in browser localStorage and do not animate it while dragging. Mobile keeps the fixed-width drawer.
 
 - Keep “New chat”, search, standalone chats, projects, and the user profile easy to scan.
 - Place chat search as an icon beside Settings in the bottom profile row; keep the ⌘K shortcut.
@@ -105,7 +105,10 @@ Use 6–8px radii for rows and controls, 16–20px for the composer and dialogs,
 - Original-folder chats stay directly under their project. Worktrees appear below them as shallow, collapsible branch-icon groups, each reusing the same chat rows, plus action and five-chat Load more behavior. Sort worktree groups by latest chat activity independently of the project's direct chats; include child activity when sorting top-level projects. Offer worktree creation in the original project's menu, without adding an extra workspace dashboard.
 - Chat rows use the full available width. Selected rows get one quiet background treatment.
 - Show participant avatar stacks for both project and standalone chats. Do not use generic people or message icons as substitutes.
-- Keep running state recognizable without replacing participant identity or making the row jump.
+- Keep running state recognizable without replacing participant identity or making the row jump. A collapsed project or worktree shows a spinner while any chat inside it is running.
+- The selected chat stays visible: selecting a chat expands its project, and it is listed even beyond the five-chat limit.
+- Row actions appear on hover or keyboard focus. Project actions overlay the end of the label so the name never re-truncates; on devices without hover they are always visible and sit beside the label.
+- Shortcut hints name the platform modifier (⌘ on Apple devices, Ctrl elsewhere). New chat is ⌘/Ctrl+Shift+O, because browsers reserve ⌘/Ctrl+N; N still works where the browser passes it through.
 
 ### Identity and avatars
 

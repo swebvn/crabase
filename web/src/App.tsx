@@ -144,7 +144,7 @@ export function App() {
     }
   };
   const commands: Command[] = [
-    { id: "new-chat", label: "New chat", shortcut: "⌘N", run: () => newChat() },
+    { id: "new-chat", label: "New chat", shortcut: "⌘⇧O", run: () => newChat() },
     { id: "new-project", label: "Open project", keywords: ["project"], run: () => setDialog("project") },
     { id: "terminal", label: "Open terminal", keywords: ["shell"], run: () => void openTerminal() },
     { id: "code", label: "Open code editor", keywords: ["editor"], run: () => selectWorkspace("code") },
@@ -226,7 +226,8 @@ export function App() {
         event.preventDefault();
         setDialog("search");
       }
-      if ((event.metaKey || event.ctrlKey) && event.key === "n") {
+      // Browsers reserve ⌘/Ctrl+N for a new window, so Shift+O is the shortcut that reaches a normal tab.
+      if ((event.metaKey || event.ctrlKey) && !event.altKey && (event.key === "n" || (event.shiftKey && event.key.toLowerCase() === "o"))) {
         event.preventDefault();
         commands.find((command) => command.id === "new-chat")?.run();
       }

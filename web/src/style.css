@@ -253,6 +253,10 @@ small {
   inset: 0 3px;
   background: var(--line);
 }
+.sidebar.resizing {
+  transition: none;
+  user-select: none;
+}
 .sidebar.desktop-hidden {
   width: 0;
   padding-right: 0;
@@ -308,6 +312,9 @@ small {
   background: var(--hover);
   color: var(--text);
 }
+.chat-link.selected {
+  font-weight: var(--weight-medium);
+}
 .sidebar-scroll {
   flex: 1;
   min-height: 0;
@@ -328,6 +335,9 @@ small {
   font-weight: var(--weight-medium);
 }
 .section-label > button:not(.icon-button) {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
   padding: 0;
   text-align: left;
 }
@@ -336,15 +346,15 @@ small {
   display: flex;
 }
 .section-actions .icon-button,
-.project-row .icon-button {
+.project-actions {
   opacity: 0;
   pointer-events: none;
 }
 .section-label:hover .section-actions .icon-button,
 .section-label:has(:focus-visible) .section-actions .icon-button,
-.project-row:hover .icon-button,
-.project-row:has(:focus-visible) .icon-button,
-.project-row .icon-button[aria-expanded="true"] {
+.project-row:hover .project-actions,
+.project-row:has(:focus-visible) .project-actions,
+.project-row:has(.icon-button[aria-expanded="true"]) .project-actions {
   opacity: 1;
   pointer-events: auto;
 }
@@ -416,16 +426,33 @@ small {
   color: var(--text);
 }
 .project-row {
+  position: relative;
   border-radius: var(--radius-small);
   display: flex;
   align-items: center;
   gap: 0;
+}
+/* Overlays the end of the label so revealing the actions never re-truncates the name. */
+.project-actions {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  border-radius: var(--radius-small);
+  background: var(--hover);
 }
 .project-row .icon-button {
   background: transparent;
   width: 24px;
   height: 24px;
   padding: 0;
+}
+.project-label .spin {
+  flex-shrink: 0;
+  margin-left: auto;
+  color: var(--muted);
 }
 .project-row .icon-button:hover:not(:disabled) {
   background: transparent;
@@ -2262,6 +2289,28 @@ legend {
   }
   .sidebar .worktree-group {
     margin-left: var(--space-1);
+  }
+}
+@media (hover: none) {
+  .section-actions .icon-button,
+  .sidebar .project-row .icon-button,
+  .sidebar .chat-menu > .icon-button {
+    width: 32px;
+    min-width: 32px;
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .project-actions {
+    position: static;
+    background: transparent;
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .chat-row .chat-link {
+    padding-right: 40px;
+  }
+  .chat-row.has-progress .chat-link {
+    padding-right: 64px;
   }
 }
 @media (prefers-reduced-motion: reduce) {

@@ -246,7 +246,7 @@ For failures, check `journalctl -u crabase`, confirm the service user's `CODEX_B
 
 ## Included
 
-- Responsive desktop-style interface, light/dark themes, project sidebar, search (⌘/Ctrl K), new-thread shortcut (⌘/Ctrl N), composer, and activity panel.
+- Responsive desktop-style interface, light/dark themes, project sidebar, search (⌘/Ctrl K), new-chat shortcut (⌘/Ctrl Shift O), composer, and activity panel.
 - Add existing project folders; persistent threads, attributed notes, archives, and activity.
 - Live updates between browser tabs through a Workerman WebSocket process.
 - Real Codex requests, streamed responses, terminal/file activity, command/file approval dialogs, cancellation, and queued requests.

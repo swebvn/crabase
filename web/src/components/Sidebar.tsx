@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import {
+  ChevronDown,
+  ChevronRight,
   Folder,
   FolderOpen,
   GitBranch,
@@ -19,6 +21,8 @@ import { useProjectExpansion } from "../hooks/useProjectExpansion";
 import { clampSidebarWidth } from "../lib/layout";
 import { sortProjects, type ProjectSort } from "../lib/projects";
 const projectSortStorageKey = "crabase.project-sort";
+const widthStorageKey = "crabase-sidebar-width";
+const modifierKey = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl";
 
 function storedProjectSort(): ProjectSort {
   const value = localStorage.getItem(projectSortStorageKey);
@@ -146,7 +150,9 @@ export function Sidebar({
     window.addEventListener("crabase:toggle-archived", toggle);
     return () => window.removeEventListener("crabase:toggle-archived", toggle);
   }, []);
-  const [width, setWidth] = useState(232);
+  const [width, setWidth] = useState(() => clampSidebarWidth(Number(localStorage.getItem(widthStorageKey)) || 232));
+  const [resizing, setResizing] = useState(false);
+  useEffect(() => localStorage.setItem(widthStorageKey, String(width)), [width]);
   const [showAll, setShowAll] = useState<string[]>([]);
   const [projectSort, setProjectSort] = useState<ProjectSort>(storedProjectSort);
   const dragOffset = useRef(0);
@@ -156,17 +162,23 @@ export function Sidebar({
   }, [projectSort]);
   const activeParent = projects.find((project) => project.id === activeProjectId)?.parent_id;
   useEffect(() => {
-    if (!activeParent || !activeProjectId) return;
-    if (!projectsOpen) toggleProjects();
-    for (const id of [activeParent, activeProjectId]) if (collapsed.includes(id)) toggleProject(id);
+    if (!activeProjectId) return;
+    if (!projectsOpen && !pins.includes(activeParent || activeProjectId)) toggleProjects();
+    for (const id of [activeParent, activeProjectId]) if (id && collapsed.includes(id)) toggleProject(id);
   }, [activeProjectId, activeParent]);
   const visibleProjects = sortProjects(projects.filter((project) => showArchived || !project.archived), chats, projectSort).filter((project) => !project.parent_id);
   const pinnedProjects = visibleProjects.filter((project) => pins.includes(project.id));
+  const standaloneChats = chats.filter((chat) => !chat.project_id && !chat.archived);
   const renderProjects = (items: Project[]): ReactNode => items.map((project) => {
     const expanded = !collapsed.includes(project.id);
     const projectChats = chats.filter(
       (chat) => chat.project_id === project.id && !chat.archived,
     );
+    const shownChats = showAll.includes(project.id)
+      ? projectChats
+      : projectChats.filter((chat, index) => index < 5 || chat.id === selected);
+    const busy = !expanded && chats.some((chat) => !chat.archived && chat.status !== "idle" && (chat.project_id === project.id
+      || projects.some((child) => child.id === chat.project_id && child.parent_id === project.id)));
     return (
       <section
         className={`project-group ${project.parent_id ? 'worktree-group' : ''}`}
@@ -186,7 +198,9 @@ export function Sidebar({
               <Folder size={16} />
             )}
             <span className="truncate" title={project.parent_id ? `${project.name}\n${project.path}` : project.name}>{project.name}{project.archived ? " · Archived" : ""}</span>
+            {busy && <Loader2 size={13} className="spin" aria-label="Agent working" />}
           </button>
+          <div className="project-actions">
           {(!project.parent_id || admin) && <Menu viewport label={`Project options for ${project.name}`} icon={<MoreHorizontal size={14} />}>
             {!project.parent_id && <MenuItem onClick={() => pinProject(project)}>
               {pins.includes(project.id) ? "Unpin" : "Pin"}
@@ -203,32 +217,29 @@ export function Sidebar({
           >
             <Plus size={13} />
           </IconButton>
+          </div>
         </div>
         {expanded && (
           <div
             id={`project-${project.id}`}
             className="project-chats"
           >
-            {projectChats
-              .slice(0, showAll.includes(project.id) ? undefined : 5)
-              .map((chat) => (
-                <ChatLink
-                  key={chat.id}
-                  {...{ chat, selected, avatars, open, archive }}
-                  rename={rename}
-                />
-              ))}
-            {projectChats.length > 5 &&
-              !showAll.includes(project.id) && (
-                <button
-                  className="load-more"
-                  onClick={() =>
-                    setShowAll((ids) => [...ids, project.id])
-                  }
-                >
-                  Load more ({projectChats.length - 5})
-                </button>
-              )}
+            {shownChats.map((chat) => (
+              <ChatLink
+                key={chat.id}
+                {...{ chat, selected, avatars, open, archive, rename }}
+              />
+            ))}
+            {projectChats.length > shownChats.length && (
+              <button
+                className="load-more"
+                onClick={() =>
+                  setShowAll((ids) => [...ids, project.id])
+                }
+              >
+                Load more ({projectChats.length - shownChats.length})
+              </button>
+            )}
             {!project.parent_id && renderProjects(sortProjects(projects.filter((child) => child.parent_id === project.id && (showArchived || !child.archived)), chats, 'updated'))}
           </div>
         )}
@@ -244,7 +255,7 @@ export function Sidebar({
         onClick={close}
       />
       <aside
-        className={`sidebar ${visible ? "mobile-open" : ""} ${hidden ? "desktop-hidden" : ""}`}
+        className={`sidebar ${visible ? "mobile-open" : ""} ${hidden ? "desktop-hidden" : ""} ${resizing ? "resizing" : ""}`}
         aria-label="Workspace sidebar"
         id="workspace-sidebar"
         style={{ "--sidebar-width": `${width}px` } as CSSProperties}
@@ -265,7 +276,7 @@ export function Sidebar({
           >
             <SquarePen size={17} />
             <span>New chat</span>
-            <kbd>⌘ N</kbd>
+            <kbd>{modifierKey} ⇧ O</kbd>
           </button>
         </nav>
         <div className="sidebar-scroll">
@@ -280,6 +291,7 @@ export function Sidebar({
               onClick={toggleProjects}
             >
               Projects
+              {projectsOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
             </button>
             <div className="section-actions">
               <Menu label="Sort projects" icon={<MoreHorizontal size={16} />}>
@@ -316,15 +328,13 @@ export function Sidebar({
               {renderProjects(visibleProjects.filter((project) => !pins.includes(project.id)))}
             </div>
           )}
-          <div className="section-label">Chats</div>
-          {chats
-            .filter((chat) => !chat.project_id && !chat.archived)
-            .map((chat) => (
-              <ChatLink
-                key={chat.id}
-                {...{ chat, selected, avatars, open, archive, rename }}
-              />
-            ))}
+          {standaloneChats.length > 0 && <div className="section-label">Chats</div>}
+          {standaloneChats.map((chat) => (
+            <ChatLink
+              key={chat.id}
+              {...{ chat, selected, avatars, open, archive, rename }}
+            />
+          ))}
         </div>
         <div className="profile-row">
           <button
@@ -334,7 +344,7 @@ export function Sidebar({
             <Avatar user={name} avatars={avatars} />
             <span className="truncate" title={name}>{name}</span>
           </button>
-          <IconButton label="Search chats and projects (⌘/Ctrl+K)" onClick={() => showDialog("search")}>
+          <IconButton label={`Search chats and projects (${modifierKey}+K)`} onClick={() => showDialog("search")}>
             <Search size={17} />
           </IconButton>
           <IconButton label="Settings" onClick={() => showDialog("settings")}>
@@ -356,7 +366,9 @@ export function Sidebar({
             event.preventDefault();
             dragOffset.current = event.clientX - width;
             event.currentTarget.setPointerCapture(event.pointerId);
+            setResizing(true);
           }}
+          onLostPointerCapture={() => setResizing(false)}
           onPointerMove={(event) => {
             if (event.currentTarget.hasPointerCapture(event.pointerId))
               setWidth(clampSidebarWidth(event.clientX - dragOffset.current));
