@@ -8,7 +8,7 @@ This document defines the intended design, not a claim that every rule is alread
 
 Inspired by [Vercel’s design.md](https://vercel.com/design.md), reviewed on September 8, 2026. That document primarily addresses Vercel-authored report websites. Crabase adopts its principles of hierarchy, alignment, typography, restraint, honest information, and accessible interaction.
 
-Crabase keeps its own identity, bundled DM Sans, React/Vite stack, Lucide icons, and semantic CSS variables. Do not import Vercel branding, its report stylesheet, a report grid, or a new component library to follow these guidelines. The application’s controls and ongoing conversations determine its layout.
+Crabase keeps its own identity, bundled Be Vietnam Pro, React/Vite stack, Lucide icons, and semantic CSS variables. Do not import Vercel branding, its report stylesheet, a report grid, or a new component library to follow these guidelines. The application’s controls and ongoing conversations determine its layout.
 
 ## Design priorities
 
@@ -38,7 +38,7 @@ Keep the existing warm neutral palette. Most hierarchy should come from position
 
 ### Typography
 
-Use bundled DM Sans for application text. Use bundled DM Mono for terminal/tool output, code, commands, and paths, with system monospace fallbacks. Do not load a new font service.
+Use bundled Be Vietnam Pro for application text. Use bundled DM Mono for terminal/tool output, code, commands, and paths, with system monospace fallbacks. Do not load a new font service.
 
 All font sizes use semantic `rem` tokens. At the browser’s default root size, **1rem = 16px**. Keep the root at `100%` so browser text-size preferences remain effective. Use the message token for 14px conversation text; do not add per-component pixel overrides.
 
