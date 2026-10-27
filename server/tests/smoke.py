@@ -166,6 +166,29 @@ if __name__=='__main__':
     chat=first.call('create',{'title':'WebSocket check '+uuid.uuid4().hex[:6]})['id'];folder_chat=None
     try:
         assert first.call('sync',{'chat_id':chat})['thread']['chat']['project_id'] is None
+        # A standalone chat must create its shell folder and stream output without polling.
+        terminal = first.call('terminalOpen', {'cols':80, 'rows':24})['terminal']['id']
+        try:
+            first.call('terminalInput', {'terminal_id':terminal, 'input':"stty -echo; exec /bin/sh\rprintf '\\x52\\x45\\x41\\x44\\x59'\r"})
+            def terminal_output(marker):
+                output = ''
+                while marker not in output:
+                    event = first.events.pop(0) if first.events else first.receive()
+                    if event.get('type') == 'terminal' and event.get('terminal_id') == terminal:
+                        assert event.get('event') != 'error', event
+                        if event.get('event') == 'output': output += event['data']
+                return output
+            terminal_output('READY')
+            first.call('terminalResize', {'terminal_id':terminal, 'cols':100, 'rows':32})
+            first.call('terminalInput', {'terminal_id':terminal, 'input':"stty size; printf 'Tiếng Việt 🦀'; pwd; printf 'TRANSPORT_DONE'\r"})
+            output = terminal_output('TRANSPORT_DONE')
+            assert '32 100' in output and 'Tiếng Việt 🦀' in output and '/.chats/' + chat in output, output
+            restored = second.call('sync', {'chat_id':chat})['terminals']
+            assert any(t['id'] == terminal and 'Tiếng Việt 🦀' in t['output'] for t in restored)
+            first.call('terminalInput', {'terminal_id':terminal, 'input':'x'*16385}, error=True)
+        finally:
+            first.call('terminalClose', {'terminal_id':terminal})
+        assert not first.call('sync', {'chat_id':chat})['terminals']
         second.call('sync',{'chat_id':chat});first.events.clear();second.events.clear()
         first.call('rename',{'chat_id':chat,'title':'Renamed WebSocket check'})
         pushed=second.patch('state')['state']

@@ -1,2 +1,13 @@
 allowBuilds:
   esbuild: true
+minimumReleaseAgeExclude:
+  - '@pierre/diffs@1.6.2'
+  - '@pierre/highlights@0.3.0'
+  - '@wterm/core@0.5.6'
+  - '@wterm/dom@0.5.6'
+  - '@wterm/ghostty@0.5.6'
+  - lucide-react@1.62.0
+
+# Trees pins an older theme adapter; use the release compatible with Pierre Theme 2.
+overrides:
+  '@pierre/trees>@pierre/theming': 1.0.2

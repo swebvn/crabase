@@ -1,6 +1,6 @@
 import { Copy, FileCode2, MoreHorizontal, PanelLeft, PanelRight, SquareTerminal } from "lucide-react";
 import type { Avatars, Chat, Project } from "../types";
-import { IconButton, Menu } from "./ui";
+import { IconButton, Menu, MenuItem } from "./ui";
 import { AvatarStack } from "./Avatar";
 export function Header({
   chat,
@@ -52,11 +52,11 @@ export function Header({
       </div>
       <div className="topbar-actions">
         <div className="mobile-header-menu">
-          <Menu label="Chat actions" icon={<MoreHorizontal size={18} />}>
-            {chat && <button onClick={copy}><Copy size={16} />Copy chat link</button>}
-            {chat && <button onClick={toggleTerminal}><SquareTerminal size={17} />{terminalOpen ? "Hide terminal" : "Show terminal"}</button>}
-            {project && <button onClick={toggleCode}><FileCode2 size={18} />{codeOpen ? "Hide code" : "Show code"}</button>}
-            <button onClick={toggleDetails}><PanelRight size={18} />{detailsOpen ? "Hide artifacts" : "Show artifacts"}</button>
+          <Menu label="Chat actions" disabled={!chat} icon={<MoreHorizontal size={18} />}>
+            {chat && <MenuItem onClick={copy}><Copy size={16} />Copy chat link</MenuItem>}
+            {chat && <MenuItem onClick={toggleTerminal}><SquareTerminal size={17} />{terminalOpen ? "Hide terminal" : "Show terminal"}</MenuItem>}
+            {chat && project && <MenuItem onClick={toggleCode}><FileCode2 size={18} />{codeOpen ? "Hide code" : "Show code"}</MenuItem>}
+            {chat && <MenuItem onClick={toggleDetails}><PanelRight size={18} />{detailsOpen ? "Hide artifacts" : "Show artifacts"}</MenuItem>}
           </Menu>
         </div>
         {chat && (
@@ -74,7 +74,7 @@ export function Header({
             </IconButton>
           </>
         )}
-        {project && <IconButton
+        {chat && project && <IconButton
           className={codeOpen ? "active" : ""}
           label={`${codeOpen ? "Hide" : "Show"} code workspace`}
           aria-pressed={codeOpen}
@@ -85,6 +85,7 @@ export function Header({
         <IconButton
           className={detailsOpen ? "active" : ""}
           label={`${detailsOpen ? "Hide" : "Open"} artifacts`}
+          disabled={!chat}
           aria-pressed={detailsOpen}
           onClick={toggleDetails}
         >

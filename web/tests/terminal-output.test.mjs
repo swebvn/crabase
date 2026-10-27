@@ -1,8 +1,20 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { appendTerminalOutput, terminalOutputUpdate } from "../src/lib/terminal.ts";
+import { appendTerminalOutput, terminalInputChunks, terminalOutputUpdate } from "../src/lib/terminal.ts";
 
 const session = (output) => ({ id: "terminal", chat_id: "chat", title: "Terminal", output, running: true });
+
+test("large terminal pastes preserve Unicode and fit the WebSocket byte limit", () => {
+  for (const input of ["", "a".repeat(16384), "a".repeat(16383) + "🦀", "Tiếng Việt 🦀\r\n".repeat(6000)]) {
+    const chunks = terminalInputChunks(input);
+    assert.equal(chunks.join(""), input);
+    for (const chunk of chunks) {
+      assert.ok(Buffer.byteLength(chunk) <= 16384);
+      assert.ok(chunk.length > 0);
+      assert.equal(Buffer.from(chunk).toString(), chunk, "must not split surrogate pairs");
+    }
+  }
+});
 
 test("terminal appends only new output across history truncation", () => {
   const initial = session("x".repeat(999998));

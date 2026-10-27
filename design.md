@@ -171,7 +171,9 @@ Before calling a UI change finished:
 
 ## Implemented system and ownership
 
-The design system lives in `web/src/styles/tokens.css`; `web/src/style.css` owns component layouts and states. These files replace scattered component-specific overrides.
+The design system lives in `web/src/styles/tokens.css`. Shared controls live in `web/src/styles/controls.css`; `web/src/style.css` owns component and page layouts and states.
+
+Use `Button` from `components/ui.tsx` for standard actions, with `primary`, `secondary` (default), or `text` variants. It defaults to `type="button"`; form submission must explicitly use `type="submit"`. Pass `loading` to disable an action and expose `aria-busy`, keeping the existing progress label as its children. Use `ButtonLink` for navigation, and `IconButton` / `IconLink` with a required `label` for icon-only controls. Use `Input` for native input fields; it forwards native attributes, events, and refs. Keep specialized interactions such as chat rows, tabs, and menu items in their owning components instead of giving them generic action-button styling. Keep control dimensions in shared tokens, and compose variants through props rather than hand-writing their CSS classes.
 
 | Token family   | Values / role                                                                                               |
 | -------------- | ----------------------------------------------------------------------------------------------------------- |

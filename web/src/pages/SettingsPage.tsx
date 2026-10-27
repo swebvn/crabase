@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Check, Moon, Sun, TriangleAlert } from "lucide-react";
 import type { Account, Project, Request } from "../types";
-import { ErrorNotice } from "../components/ui";
+import { ErrorNotice, Button, Input } from "../components/ui";
 import { useAuth } from "../components/AuthGate";
 import { useAttachments } from '../hooks/useAttachments';
 import { AttachmentList } from '../components/AttachmentList';
@@ -15,7 +15,7 @@ export function SettingsPage({ theme, setTheme, request, projects, loaded, back 
   const [page, setPage] = useState('profile');
   const [error, setError] = useState('');
   const [sharingProject, setSharingProject] = useState<Project | null>(null);
-  return <div className="settings-page">{!user.avatar_required && <button className="text-button" onClick={back}>← Back to workspace</button>}<h1>Settings</h1>
+  return <div className="settings-page">{!user.avatar_required && <Button variant="text" onClick={back}>← Back to workspace</Button>}<h1>Settings</h1>
     <div className="settings-layout">
       <nav className="settings-nav" aria-label="Settings">
         <button aria-current={page === 'profile' ? 'page' : undefined} onClick={() => setPage('profile')}>Profile</button>
@@ -70,17 +70,17 @@ function AvatarUpload({ request }: { request: Request }) {
       <div><strong>Profile photo required</strong><p>Upload and save a photo to enter the workspace. We couldn’t find an avatar or Gravatar for your account.</p></div>
     </div> :
       <img className="profile-avatar-preview" src={user.avatar_url || user.avatar_fallback} alt="Your profile photo" />}
-    <label>Choose image<input type="file" accept="image/png,image/jpeg,image/gif,image/webp" disabled={busy} onChange={event => {
+    <label>Choose image<Input type="file" accept="image/png,image/jpeg,image/gif,image/webp" disabled={busy} onChange={event => {
       const file = event.target.files?.[0]; if (file) { upload.clear(); upload.add([file]); setError(''); } event.target.value = '';
     }} /></label>
     <AttachmentList files={upload.files} remove={upload.remove} retry={upload.retry} disabled={busy} />
     <ErrorNotice message={error || upload.error} />
-    <button className="button secondary" disabled={busy || !upload.files.length || !upload.ready} onClick={async () => {
+    <Button variant="secondary" loading={busy} disabled={!upload.files.length || !upload.ready} onClick={async () => {
       setBusy(true); setError('');
       try { await request('avatarSave', { id: upload.ids()[0] }); upload.clear(); await refresh(); }
       catch (error) { setError((error as Error).message); }
       finally { setBusy(false); }
-    }}>{busy ? 'Saving…' : upload.files.length && !upload.ready ? 'Uploading…' : 'Save photo'}</button>
+    }}>{busy ? 'Saving…' : upload.files.length && !upload.ready ? 'Uploading…' : 'Save photo'}</Button>
   </section>;
 }
 
@@ -92,6 +92,7 @@ function AccountForm({ account, admin = false, save, cancel }: {
   const [busy, setBusy] = useState(false);
   return <form className="account-form" onChange={() => setSaved(false)} onSubmit={async event => {
     event.preventDefault();
+    if (busy) return;
     const form = event.currentTarget;
     const fields = new FormData(form);
     const data: Record<string, unknown> = Object.fromEntries(fields);
@@ -105,26 +106,26 @@ function AccountForm({ account, admin = false, save, cancel }: {
     finally { setBusy(false); }
   }}>
     <h2>{admin ? account ? 'Edit user' : 'New user' : 'Profile'}</h2>
-    <label>Display name<input name="name" defaultValue={account?.name} required maxLength={100} autoComplete="name" /></label>
-    <label>Login email<input name="email" type="email" defaultValue={account?.email} readOnly={!!account} required maxLength={254} autoComplete="username" /></label>
+    <label>Display name<Input name="name" defaultValue={account?.name} required maxLength={100} autoComplete="name" /></label>
+    <label>Login email<Input name="email" type="email" defaultValue={account?.email} readOnly={!!account} required maxLength={254} autoComplete="username" /></label>
     {!admin && <>
-      <label>Git author name <small>(optional)</small><input name="git_name" defaultValue={account?.git_name} maxLength={100} /></label>
-      <label>Git author email <small>(optional)</small><input name="git_email" type="email" defaultValue={account?.git_email} maxLength={254} /></label>
+      <label>Git author name <small>(optional)</small><Input name="git_name" defaultValue={account?.git_name} maxLength={100} /></label>
+      <label>Git author email <small>(optional)</small><Input name="git_email" type="email" defaultValue={account?.git_email} maxLength={254} /></label>
       <p className="muted">Use your GitHub-verified or noreply email for commit credit. Leave it empty to omit co-author credit.</p>
-      <label>Current password<input name="current_password" type="password" autoComplete="current-password" /></label>
+      <label>Current password<Input name="current_password" type="password" autoComplete="current-password" /></label>
       <p className="muted">Required only when changing your password. Login email cannot be changed.</p>
     </>}
-    <label>{account ? 'New password (leave blank to keep)' : 'Password'}<input name="password" type="password"
+    <label>{account ? 'New password (leave blank to keep)' : 'Password'}<Input name="password" type="password"
       autoComplete="new-password" minLength={6} maxLength={72} required={!account} /></label>
     {admin && <>
-      <label className="check-label"><input name="admin" type="checkbox" defaultChecked={!!account?.admin} /> Administrator</label>
-      {account && <label className="check-label"><input name="enabled" type="checkbox" defaultChecked={!!account.enabled} /> Account enabled</label>}
+      <label className="check-label"><Input name="admin" type="checkbox" defaultChecked={!!account?.admin} /> Administrator</label>
+      {account && <label className="check-label"><Input name="enabled" type="checkbox" defaultChecked={!!account.enabled} /> Account enabled</label>}
     </>}
     <ErrorNotice message={error} />
     {saved && <p role="status">Saved.</p>}
     <div className="dialog-actions">
-      {cancel && <button type="button" className="button secondary" onClick={cancel}>Back</button>}
-      <button className="button primary" disabled={busy}>{busy ? 'Saving…' : 'Save'}</button>
+      {cancel && <Button type="button" variant="secondary" onClick={cancel}>Back</Button>}
+      <Button type="submit" variant="primary" loading={busy}>{busy ? 'Saving…' : 'Save'}</Button>
     </div>
   </form>;
 }
@@ -146,9 +147,9 @@ function UserManagement({ request }: { request: Request }) {
       await request(editing === 'new' ? 'userCreate' : 'userUpdate', data);
       setEditing(null); await load();
     }} />;
-  return <><div className="settings-users-heading"><h2>Users</h2><button className="button secondary" onClick={() => setEditing('new')}>Add user</button></div>
+  return <><div className="settings-users-heading"><h2>Users</h2><Button variant="secondary" onClick={() => setEditing('new')}>Add user</Button></div>
     <ErrorNotice message={error} />
-    {error && <button className="text-button" onClick={() => void load()}>Retry</button>}
+    {error && <Button variant="text" onClick={() => void load()}>Retry</Button>}
     {loading ? <p role="status">Loading users…</p> : <ul className="settings-users">
       {users.map(user => <li key={user.id}><button onClick={() => setEditing(user)}>
         <span><strong>{user.name}</strong><small>{user.email}</small></span>

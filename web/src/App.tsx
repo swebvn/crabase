@@ -1,3 +1,4 @@
+import { Button } from "./components/ui";
 import type { Project, TerminalSession } from "./types";
 import { useAuth } from "./components/AuthGate";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
@@ -5,7 +6,7 @@ import { Check } from "lucide-react";
 import { useRoute } from "./hooks/useRoute";
 import { useWorkspace } from "./hooks/useWorkspace";
 import { usePreferences } from "./hooks/usePreferences";
-import { fileSearchDirection, isSidebarShortcut } from "./lib/shortcuts";
+import { isSidebarShortcut } from "./lib/shortcuts";
 import { updateRecord } from "./lib/layout";
 import { chatPath } from "./lib/routes";
 import { Sidebar } from "./components/Sidebar";
@@ -54,6 +55,8 @@ export function App() {
     workspace;
   const preferences = usePreferences(data.users);
   const [projectId, setProjectId] = useState("");
+  const chat = data.chats.find((item) => item.id === selected);
+  const project = data.projects.find((item) => item.id === (selected ? chat?.project_id : projectId));
   const [worktreeProject, setWorktreeProject] = useState<Project | null>(null);
   const previousProjects = useRef(data.projects);
   const [draftVersion, setDraftVersion] = useState(0);
@@ -145,12 +148,12 @@ export function App() {
   };
   const commands: Command[] = [
     { id: "new-chat", label: "New chat", shortcut: "⌘⇧O", run: () => newChat() },
-    { id: "new-project", label: "Open project", keywords: ["project"], run: () => setDialog("project") },
-    { id: "terminal", label: "Open terminal", keywords: ["shell"], run: () => void openTerminal() },
-    { id: "code", label: "Open code editor", keywords: ["editor"], run: () => selectWorkspace("code") },
+    ...user.admin ? [{ id: "new-project", label: "Open project", keywords: ["project"], run: () => setDialog("project") }] : [],
+    ...selected ? [{ id: "terminal", label: "Open terminal", keywords: ["shell"], run: () => void openTerminal() }] : [],
+    ...selected && project ? [{ id: "code", label: "Open code editor", keywords: ["editor"], run: () => selectWorkspace("code") }] : [],
     { id: "settings", label: "Open settings", run: () => navigate('/settings') },
     { id: "sidebar", label: "Toggle left sidebar", run: toggleSidebar },
-    { id: "right-sidebar", label: "Toggle right sidebar", keywords: ["workspace", "panel"], run: () => workspaceTab ? setWorkspaceTab("") : restoreWorkspace() },
+    ...selected ? [{ id: "right-sidebar", label: "Toggle right sidebar", keywords: ["workspace", "panel"], run: () => workspaceTab ? setWorkspaceTab("") : restoreWorkspace() }] : [],
     { id: "archived", label: "Show or hide archived projects", keywords: ["archive"], run: () => window.dispatchEvent(new Event("crabase:toggle-archived")) },
   ];
   useEffect(() => {
@@ -184,15 +187,12 @@ export function App() {
   const toggleTerminal = () => {
     if (terminal) return setWorkspaceTab("");
     const last = currentWorkspace.last;
-    if (last.startsWith("terminal:") && workspace.terminals.some((item) => item.id === last.slice("terminal:".length))) setWorkspaceTab(last);
+    const existing = workspace.terminals.find((item) => last === `terminal:${item.id}`) || workspace.terminals.at(-1);
+    if (existing) setWorkspaceTab(`terminal:${existing.id}`);
     else void openTerminal();
   };
   const workspaceDock = currentWorkspace.dock;
   const [toast, setToast] = useState("");
-  const chat = data.chats.find((item) => item.id === selected);
-  const project = data.projects.find(
-    (item) => item.id === (selected ? chat?.project_id : projectId),
-  );
   function open(id: string) {
     setFileSearch(false);
     navigate(chatPath(id));
@@ -212,8 +212,9 @@ export function App() {
   }
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
-      if (event.ctrlKey && fileSearchDirection(event) &&
-        document.querySelector('.file-palette[open]')) return;
+      if (event.isComposing || event.repeat || document.querySelector('dialog[open]')) return;
+      // Control chords belong to the shell while terminal input has focus.
+      if (!event.metaKey && event.target instanceof Element && event.target.closest('.terminal-emulator')) return;
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "p" &&
         !event.shiftKey && !event.altKey && !event.isComposing && project) {
         if (document.querySelector('dialog[open]:not(.file-palette)')) return;
@@ -222,7 +223,7 @@ export function App() {
         setFileSearch(true);
         document.querySelector<HTMLInputElement>('.file-palette input')?.focus();
       }
-      if ((event.metaKey || event.ctrlKey) && event.key === "k") {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
         setDialog("search");
       }
@@ -384,7 +385,7 @@ export function App() {
     </div>
     {workspace.terminals.map((session) => <div className={`workspace-view ${visibleWorkspaceTab === `terminal:${session.id}` ? "active" : ""}`} key={session.id}>
       <TerminalPanel terminalId={session.id} sessions={workspace.terminals} request={request}
-        fail={setError} theme={preferences.theme} open={visibleWorkspaceTab === `terminal:${session.id}` && !!workspaceTab} />
+        theme={preferences.theme} open={visibleWorkspaceTab === `terminal:${session.id}` && !!workspaceTab} />
     </div>)}
   </WorkspacePanel>;
   if (route.page === "settings" || user.avatar_required) return <main className="settings-shell">
@@ -452,9 +453,9 @@ export function App() {
             {route.page === "missing" ? (
               <section className="empty-state">
                 <h1>Page not found</h1>
-                <button className="button secondary" onClick={() => newChat()}>
+                <Button variant="secondary" onClick={() => newChat()}>
                   New chat
-                </button>
+                </Button>
               </section>
             ) : route.page === "new" ? (
               <NewChatPage hasProject={!!project}>{composer}</NewChatPage>

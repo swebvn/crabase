@@ -320,10 +320,8 @@ final class Codex
     }
     private function tick(): void
     {
-        try {
-            $this->terminalTick();
-        } catch (\Throwable $error) {
-            $this->terminalFailed($error->getMessage());
+        if (is_resource($this->terminalProcess) && !proc_get_status($this->terminalProcess)['running']) {
+            $this->terminalFailed('Terminal host stopped.');
         }
         try {
             if (!$this->bootAttempted && $this->clients && microtime(true) >= $this->retryAt) {
@@ -722,7 +720,7 @@ final class Codex
                 $path = $workspaceRoot.'/.chats/'.$chatId;
             }
             $cwd = $path;
-            if (!$path && !is_dir($cwd) && !mkdir($cwd, 0700, true)) {
+            if (!$row->project && !is_dir($cwd) && !mkdir($cwd, 0700, true) && !is_dir($cwd)) {
                 throw new \RuntimeException('Could not create the chat directory.');
             }
             $cwd = realpath($cwd);
@@ -796,8 +794,22 @@ final class Codex
                 throw new \RuntimeException('Could not start the terminal host.');
             }
             foreach ($this->terminalPipes as $pipe) stream_set_blocking($pipe, false);
+            // PTY input/output must not wait for the agent's 50 ms scheduling tick.
+            foreach ([1, 2] as $index) {
+                Worker::$globalEvent?->onReadable($this->terminalPipes[$index], fn () => $this->terminalPump());
+            }
         }
         $this->terminalOutput .= json_encode($message, JSON_INVALID_UTF8_SUBSTITUTE)."\n";
+        $this->terminalTick();
+    }
+
+    private function terminalPump(): void
+    {
+        try {
+            $this->terminalTick();
+        } catch (\Throwable $error) {
+            $this->terminalFailed($error->getMessage());
+        }
     }
 
     private function terminalTick(): void
@@ -811,8 +823,14 @@ final class Codex
             if ($written === false) throw new \RuntimeException('Terminal host connection closed.');
             $this->terminalOutput = substr($this->terminalOutput, $written);
         }
+        if ($this->terminalOutput === '') {
+            Worker::$globalEvent?->offWritable($this->terminalPipes[0]);
+        } else {
+            Worker::$globalEvent?->onWritable($this->terminalPipes[0], fn () => $this->terminalPump());
+        }
         $stderr = stream_get_contents($this->terminalPipes[2]);
         if ($stderr) file_put_contents(dirname(__DIR__, 2).'/runtime/logs/terminal.log', $stderr, FILE_APPEND);
+        if (feof($this->terminalPipes[2])) Worker::$globalEvent?->offReadable($this->terminalPipes[2]);
         $this->terminalInput .= stream_get_contents($this->terminalPipes[1]);
         while (($end = strpos($this->terminalInput, "\n")) !== false) {
             $line = substr($this->terminalInput, 0, $end);
@@ -835,6 +853,7 @@ final class Codex
                 $this->terminalBroadcast($chatId, ['event' => 'error','terminal_id' => $id,'message' => $message['message'] ?? 'Terminal failed.']);
             }
         }
+        if (feof($this->terminalPipes[1])) throw new \RuntimeException('Terminal host connection closed.');
     }
 
     private function terminalBroadcast(string $chatId, array $packet): void
@@ -859,7 +878,11 @@ final class Codex
 
     private function terminalShutdown(): void
     {
-        foreach ($this->terminalPipes as $pipe) if (is_resource($pipe)) fclose($pipe);
+        foreach ($this->terminalPipes as $pipe) if (is_resource($pipe)) {
+            Worker::$globalEvent?->offReadable($pipe);
+            Worker::$globalEvent?->offWritable($pipe);
+            fclose($pipe);
+        }
         if (is_resource($this->terminalProcess)) {
             proc_terminate($this->terminalProcess);
             proc_close($this->terminalProcess);

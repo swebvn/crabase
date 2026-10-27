@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, ChevronRight, Folder } from "lucide-react";
 import type { Request } from "../types";
-import { Dialog, ErrorNotice, IconButton } from "./ui";
+import { Dialog, ErrorNotice, IconButton, Input, Button } from "./ui";
 
 type FolderListing = {
   root: string;
@@ -68,7 +68,7 @@ export function ProjectDialog({
     }
   }
   return (
-    <Dialog title="Open folder" close={close}>
+    <Dialog title="Open folder" close={close} dismissible={!busy}>
       <div className="folder-location">
         <IconButton
           label="Parent folder"
@@ -87,7 +87,7 @@ export function ProjectDialog({
       </div>
       <label>
         <span className="sr-only">Search folders here</span>
-        <input
+        <Input
           autoFocus
           type="search"
           placeholder="Search folders here…"
@@ -141,25 +141,26 @@ export function ProjectDialog({
       </div>
       <ErrorNotice message={error} />
       {error && (
-        <button
-          className="button secondary"
+        <Button
+          variant="secondary"
           disabled={busy}
           onClick={() => setRetry(retry + 1)}
         >
           Reload folders
-        </button>
+        </Button>
       )}
       <div className="dialog-actions">
-        <button className="button secondary" onClick={close}>
+        <Button variant="secondary" disabled={busy} onClick={close}>
           Cancel
-        </button>
-        <button
-          className="button primary"
-          disabled={!selected || busy || loading}
+        </Button>
+        <Button
+          variant="primary"
+          loading={busy}
+          disabled={!selected || loading}
           onClick={() => void openFolder()}
         >
           {busy ? "Opening…" : "Open folder"}
-        </button>
+        </Button>
       </div>
     </Dialog>
   );

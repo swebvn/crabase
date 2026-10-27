@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { File } from "lucide-react";
-import { Dialog } from "./ui";
+import { Dialog, Input } from "./ui";
 import { searchFiles } from "../lib/file-search";
 import { fileSearchDirection } from "../lib/shortcuts";
 
@@ -27,7 +27,7 @@ export function FilePalette({ paths, loading, error, open, close }: {
   }
   return <Dialog title="Open file" className="file-palette" close={close} initialFocus={input} minimal>
     <div className="file-palette-search">
-      <input ref={input} role="combobox" aria-label="Search project files" aria-autocomplete="list"
+      <Input ref={input} role="combobox" aria-label="Search project files" aria-autocomplete="list"
         aria-expanded="true" aria-controls={id} aria-activedescendant={results.length ? `${id}-${active}` : undefined}
         placeholder="Search files by name or path…" value={query}
         onChange={event => { setQuery(event.target.value); setSelection(0); }}

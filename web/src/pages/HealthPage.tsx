@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Request } from "../types";
-import { ErrorNotice } from "../components/ui";
+import { ErrorNotice, Button } from "../components/ui";
 
 type Health = { checked_at: string; checks: { name: string; status: "ok" | "warning" | "error" | "idle"; detail: string }[] };
 
@@ -16,7 +16,7 @@ export function HealthPage({ request }: { request: Request }) {
   }
   useEffect(() => { void load(); }, [request]);
   return <>
-    <div className="settings-users-heading"><h2>Health</h2><button className="button secondary" disabled={loading} onClick={() => void load()}>Refresh</button></div>
+    <div className="settings-users-heading"><h2>Health</h2><Button variant="secondary" loading={loading} onClick={() => void load()}>Refresh</Button></div>
     <ErrorNotice message={error} />
     {loading && <p role="status">Checking health…</p>}
     {health && <><ul className="settings-health">

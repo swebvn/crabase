@@ -2,9 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Search, X } from "lucide-react";
 import type { Avatars, Chat, Project } from "../types";
 import { AvatarStack } from "./Avatar";
-import { Dialog, IconButton } from "./ui";
+import { Dialog, IconButton, Input } from "./ui";
 import type { Command } from "../lib/commands";
-import { fuzzyScore } from "../lib/commands";
+import { fuzzyScore, searchChats } from "../lib/commands";
 
 function HighlightedText({ text, query }: { text: string; query: string }) {
   if (!query) return <>{text}</>;
@@ -22,19 +22,7 @@ export function SearchDialog({ chats, projects, avatars, commands = [], open, cl
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const results = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    return projects.filter((project) => !project.archived).map((project, index) => {
-        const title = project.name.toLowerCase();
-        const score = fuzzyScore(title, query);
-        if (score === null) return null;
-        const chat = chats.find((item) => item.project_id === project.id && !item.archived);
-        return chat ? { chat, index, score } : null;
-      })
-      .filter((result): result is { chat: Chat; index: number; score: number } => result !== null)
-      .sort((a, b) => a.score - b.score || a.index - b.index)
-      .map(({ chat }) => chat);
-  }, [chats, projects, search, commands]);
+  const results = useMemo(() => searchChats(chats, projects, search), [chats, projects, search]);
 
   const query = search.trim();
   const filteredCommands = commands.filter((command) => fuzzyScore([command.label, ...(command.keywords || [])].join(" "), query) !== null);
@@ -55,7 +43,7 @@ export function SearchDialog({ chats, projects, avatars, commands = [], open, cl
     selected?.scrollIntoView({ block: "nearest" });
   }, [filteredCommands, results, selectedIndex]);
   const selectResult = (index: number) => {
-    if (index < filteredCommands.length) { filteredCommands[index]?.run(); close(); return; }
+    if (index < filteredCommands.length) { close(); filteredCommands[index]?.run(); return; }
     const chat = results[index - filteredCommands.length];
     if (chat) open(chat.id);
   };
@@ -63,7 +51,7 @@ export function SearchDialog({ chats, projects, avatars, commands = [], open, cl
   return <Dialog title="Search chats and projects" close={close} className="search-dialog" minimal>
     <div className="search-dialog-field">
       <Search size={18} aria-hidden="true" />
-      <input
+      <Input
         ref={inputRef}
         autoFocus
         role="combobox"
@@ -77,6 +65,7 @@ export function SearchDialog({ chats, projects, avatars, commands = [], open, cl
         value={search}
         onChange={(event) => setSearch(event.target.value)}
         onKeyDown={(event) => {
+          if (event.nativeEvent.isComposing) return;
           if (event.key === "ArrowDown") {
             event.preventDefault();
             setSelectedIndex((index) => totalResults ? (index + 1) % totalResults : 0);
@@ -111,20 +100,23 @@ export function SearchDialog({ chats, projects, avatars, commands = [], open, cl
       {totalResults > 0 && <span><kbd>↑</kbd><kbd>↓</kbd> to move <kbd>Enter</kbd> to run</span>}
     </div>
     <div id="search-result-list" className="search-results" role="listbox" aria-label="Search results">
-      {filteredCommands.map((command, commandIndex) => <button key={command.id} id={`command-result-${command.id}`} role="option" aria-selected={selectedIndex === commandIndex} onMouseEnter={() => setSelectedIndex(commandIndex)} onClick={() => { command.run(); close(); }}>
+      {filteredCommands.map((command, commandIndex) => <button type="button" tabIndex={-1} key={command.id} id={`command-result-${command.id}`} role="option" aria-selected={selectedIndex === commandIndex} onMouseEnter={() => setSelectedIndex(commandIndex)} onClick={() => selectResult(commandIndex)}>
         <span className="search-result-copy"><strong>{command.label}</strong><small>{command.shortcut || "Command"}</small></span>
       </button>)}
       {results.map((chat, index) => <button
         key={chat.id}
+        type="button"
+        tabIndex={-1}
         id={`search-result-${chat.id}`}
         role="option"
         aria-selected={selectedIndex === filteredCommands.length + index}
         onMouseEnter={() => setSelectedIndex(filteredCommands.length + index)}
-        onClick={() => selectResult(index)}
+        onClick={() => selectResult(filteredCommands.length + index)}
       >
         <AvatarStack users={chat.participants} avatars={avatars} />
         <span className="search-result-copy">
-          <strong><HighlightedText text={chat.project_name || ""} query={query} /></strong>
+          <strong><HighlightedText text={chat.title} query={query} /></strong>
+          <small>{chat.project_name || "Standalone chat"}{chat.archived ? " · Archived" : ""}</small>
         </span>
         {selectedIndex === filteredCommands.length + index && <span className="search-result-enter" aria-hidden="true">↵</span>}
       </button>)}

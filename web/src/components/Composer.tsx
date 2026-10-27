@@ -9,7 +9,7 @@ import {
   StickyNote,
 } from "lucide-react";
 import type { Chat, Project, ProjectWorkspace, Request, Snapshot } from "../types";
-import { IconButton, ErrorNotice } from "./ui";
+import { IconButton, ErrorNotice, Button, Input } from "./ui";
 import { AttachmentList } from './AttachmentList';
 import { ModelPicker } from './ModelPicker';
 import { reasoningLevels } from '../lib/models';
@@ -69,6 +69,7 @@ export function Composer({
   const [branchError, setBranchError] = useState(false);
   const [contextVersion, setContextVersion] = useState(0);
   const [modelError, setModelError] = useState("");
+  const modelsUnavailable = data.runtime === "error" || (loaded && data.runtime === "connected" && !data.models.length);
   const [filePaths, setFilePaths] = useState<readonly string[]>([]);
   const [filePathsProject, setFilePathsProject] = useState("");
   const [filePathsLoading, setFilePathsLoading] = useState(false);
@@ -224,9 +225,9 @@ export function Composer({
       {chat?.archived ? (
         <div className="archived-notice">
           <span>This chat is archived.</span>
-          <button className="button secondary" onClick={restore}>
+          <Button variant="secondary" onClick={restore}>
             Restore chat
-          </button>
+          </Button>
         </div>
       ) : (
         <div className={`composer-box ${dragging ? 'attachment-dragging' : ''}`}
@@ -258,6 +259,7 @@ export function Composer({
               updateFileMention(event.currentTarget.value, event.currentTarget.selectionStart);
             }}
             onKeyDown={(event) => {
+              if (event.nativeEvent.isComposing) return;
               if (fileMention) {
                 const direction = fileSearchDirection(event.nativeEvent);
                 if (direction) {
@@ -327,10 +329,10 @@ export function Composer({
           )}
           <div className="composer-controls">
             <div className="model-controls">
-              <input ref={picker} type="file" multiple hidden onChange={event => { attachments.add(Array.from(event.target.files || [])); event.target.value = ''; }} />
+              <Input ref={picker} type="file" multiple hidden onChange={event => { attachments.add(Array.from(event.target.files || [])); event.target.value = ''; }} />
               <IconButton label="Attach files" disabled={busy || !live || attachments.files.length >= 10} onClick={() => picker.current?.click()}><Paperclip size={17} /></IconButton>
               <ModelPicker models={data.models} chosen={chosen} reasoning={reasoning}
-                unavailable={data.runtime === 'error'}
+                unavailable={modelsUnavailable}
                 selectModel={model => { setModel(model); setEffort(''); }}
                 selectReasoning={setEffort} />
               {context?.branch && (
@@ -342,10 +344,10 @@ export function Composer({
                   <span className="truncate">{context.detached ? 'HEAD · ' : ''}{context.branch}</span>
                 </span>
               )}
-              {project && branchError && <button className="text-button" onClick={() => setContextVersion(version => version + 1)}>Retry branch lookup</button>}
-              {data.runtime === "error" && (
-                <button
-                  className="text-button"
+              {project && branchError && <Button variant="text" onClick={() => setContextVersion(version => version + 1)}>Retry branch lookup</Button>}
+              {modelsUnavailable && (
+                <Button
+                  variant="text"
                   onClick={() => {
                     setModelError("");
                     void request("models").catch((error: Error) =>
@@ -354,7 +356,7 @@ export function Composer({
                   }}
                 >
                   Retry models
-                </button>
+                </Button>
               )}
             </div>
             <div className="send-controls">

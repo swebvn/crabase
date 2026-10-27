@@ -50,6 +50,9 @@
   --weight-regular: 400;
   --weight-medium: 500;
   --weight-strong: 550;
+  --control-height: 36px;
+  --control-icon-size: 32px;
+  --control-touch-size: 44px;
   --radius-small: 8px;
   --radius-panel: 16px;
   --radius-composer: 20px;

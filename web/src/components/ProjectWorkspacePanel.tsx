@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type CSSP
 import { Columns2, Rows2, FilePlus2, Files as FilesIcon, GitCompareArrows, RefreshCw, X } from "lucide-react";
 import { FileTree, useFileTree } from "@pierre/trees/react";
 import type { Project, ProjectWorkspace, Request, WorkspaceChange } from "../types";
-import { IconButton } from "./ui";
+import { IconButton, Button } from "./ui";
 import { FilePalette } from "./FilePalette";
 import { clampPanelWidth } from "../lib/layout";
 const WorkspaceCode = lazy(() => import("./WorkspaceCode"));
@@ -289,8 +289,8 @@ export function ProjectWorkspacePanel({ project, request, theme, actions, fileSe
               className={diffStyle === "split" ? "active" : ""} onClick={() => setDiffStyle("split")}>
               <Columns2 size={16} />
             </IconButton>
-            <button className="button secondary workspace-action"
-              disabled={selectedChange?.status === "deleted"} onClick={() => openFile(diff.path)}>Edit file</button>
+            <Button variant="secondary" className="workspace-action"
+              disabled={selectedChange?.status === "deleted"} onClick={() => openFile(diff.path)}>Edit file</Button>
           </div>}
         </div>
         {surface === "file" ? active ? active.unsupported ? <div className="workspace-empty" role="status">

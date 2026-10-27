@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { Project, Request } from '../types';
-import { Dialog, ErrorNotice } from './ui';
+import { Dialog, ErrorNotice, Input, Button } from './ui';
 
 export function WorktreeDialog({ project, request, added, close }: {
   project: Project; request: Request; added: (id: string) => void; close: () => void;
@@ -8,7 +8,8 @@ export function WorktreeDialog({ project, request, added, close }: {
   const [branch, setBranch] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  return <Dialog title="Create worktree" close={() => { if (!busy) close(); }}>
+  const input = useRef<HTMLInputElement>(null);
+  return <Dialog title="Create worktree" close={close} dismissible={!busy} initialFocus={input}>
     <form className="account-form" onSubmit={async event => {
       event.preventDefault();
       if (busy) return;
@@ -18,11 +19,11 @@ export function WorktreeDialog({ project, request, added, close }: {
       finally { setBusy(false); }
     }}>
       <p className="muted">Create a new branch from {project.name}’s current commit. Uncommitted files, .env and dependencies aren’t copied unless tracked by Git.</p>
-      <label>New branch<input autoFocus required maxLength={160} placeholder="feature/login" value={branch} disabled={busy} onChange={event => setBranch(event.target.value)} /></label>
+      <label>New branch<Input ref={input} required maxLength={160} placeholder="feature/login" value={branch} disabled={busy} onChange={event => setBranch(event.target.value)} /></label>
       <ErrorNotice message={error} />
       <div className="dialog-actions">
-        <button type="button" className="button secondary" disabled={busy} onClick={close}>Cancel</button>
-        <button className="button primary" disabled={busy || !branch.trim()}>{busy ? 'Creating…' : 'Create worktree'}</button>
+        <Button type="button" variant="secondary" disabled={busy} onClick={close}>Cancel</Button>
+        <Button type="submit" variant="primary" loading={busy} disabled={!branch.trim()}>{busy ? 'Creating…' : 'Create worktree'}</Button>
       </div>
     </form>
   </Dialog>;

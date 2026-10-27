@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Download, File, RotateCcw, X } from 'lucide-react';
 import type { Artifact } from '../types';
-import { Dialog, IconButton } from './ui';
+import { Dialog, IconButton, IconLink } from './ui';
 
 type Attachment = Artifact & { key?: string; progress?: number; error?: string };
 export function AttachmentList<T extends Attachment>({ files, remove, retry, disabled }: {
@@ -33,7 +33,7 @@ export function AttachmentList<T extends Attachment>({ files, remove, retry, dis
         </div>
         {file.error && retry && <IconButton label={`Retry ${file.name}`} disabled={disabled} onClick={() => retry(file)}><RotateCcw size={14} /></IconButton>}
         {remove ? <IconButton label={`Remove ${file.name}`} disabled={disabled} onClick={() => remove(file)}><X size={14} /></IconButton> :
-          <a className="icon-button" href={`${file.url}?download=1`} aria-label={`Download ${file.name}`} title={`Download ${file.name}`}><Download size={14} /></a>}
+          <IconLink href={`${file.url}?download=1`} label={`Download ${file.name}`}><Download size={14} /></IconLink>}
       </div>;
       })}
     </div>

@@ -1,0 +1,90 @@
+/* Shared native controls. Component and page styles own their layout. */
+.icon-button {
+  width: var(--control-icon-size);
+  height: var(--control-icon-size);
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-small);
+  color: var(--subtle);
+}
+.icon-button:hover:not(:disabled),
+.icon-button.active,
+.text-button:hover:not(:disabled) {
+  background: var(--hover);
+  color: var(--text);
+}
+.button {
+  min-height: var(--control-height);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-small);
+  font-size: var(--type-control);
+  font-weight: var(--weight-medium);
+  text-decoration: none;
+}
+.text-button {
+  min-height: var(--control-icon-size);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-small);
+  font-size: var(--type-control);
+  text-decoration: none;
+}
+.button-primary {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.button-secondary {
+  border: 1px solid var(--line);
+  background: var(--paper);
+}
+.button-secondary:hover:not(:disabled) {
+  background: var(--hover);
+}
+label {
+  display: block;
+  font-size: var(--type-label);
+  font-weight: var(--weight-medium);
+  margin-bottom: var(--space-4);
+}
+label > input,
+label > select {
+  display: block;
+  width: 100%;
+  margin-top: var(--space-2);
+}
+.input,
+label > select {
+  min-width: 0;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-small);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--type-control);
+}
+.input:is([type="checkbox"], [type="radio"]) {
+  accent-color: var(--accent);
+}
+.input:disabled { cursor: not-allowed; opacity: 0.6; }
+.input[aria-invalid="true"] { border-color: var(--danger); }
+
+@media (max-width: 760px) {
+  .icon-button {
+    min-width: var(--control-height);
+    min-height: var(--control-height);
+  }
+}
+@media (pointer: coarse) {
+  .icon-button,
+  .button,
+  .text-button {
+    min-height: var(--control-touch-size);
+  }
+  .icon-button {
+    min-width: var(--control-touch-size);
+  }
+}

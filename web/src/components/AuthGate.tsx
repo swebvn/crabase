@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import type { Account } from "../types";
-import { ErrorNotice } from "./ui";
+import { ErrorNotice, ButtonLink, Button, Input } from "./ui";
 
 const AuthContext = createContext<{ user: Account; refresh: () => Promise<void>; logout: () => Promise<void> } | null>(null);
 export function useAuth() {
@@ -54,14 +54,14 @@ export function AuthGate({ children }: { children: ReactNode }) {
     finally { setBusy(false); }
   }}>
     <h1>Sign in to Crabase</h1>
-    {oauth && <a className="button primary" href="/auth/oauth/start">Sign in with TDA</a>}
-    {oauth && <button type="button" className="text-button" aria-expanded={passwordLogin} aria-controls="password-login" onClick={() => { setPasswordLogin(!passwordLogin); setError(''); }}>
+    {oauth && <ButtonLink variant="primary" href="/auth/oauth/start">Sign in with TDA</ButtonLink>}
+    {oauth && <Button type="button" variant="text" aria-expanded={passwordLogin} aria-controls="password-login" onClick={() => { setPasswordLogin(!passwordLogin); setError(''); }}>
       {passwordLogin ? 'Hide email and password' : 'Use email and password'}
-    </button>}
+    </Button>}
     {(!oauth || passwordLogin) && <div id="password-login" className="login-form">
-    <label>Email<input name="email" type="email" autoComplete="username" required autoFocus /></label>
-    <label>Password<input name="password" type="password" autoComplete="current-password" required /></label>
-    <button className={`button ${oauth ? 'secondary' : 'primary'}`} disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button>
+    <label>Email<Input name="email" type="email" autoComplete="username" required autoFocus /></label>
+    <label>Password<Input name="password" type="password" autoComplete="current-password" required /></label>
+    <Button type="submit" variant={oauth ? 'secondary' : 'primary'} loading={busy}>{busy ? 'Signing in…' : 'Sign in'}</Button>
     </div>}
     <ErrorNotice message={error} />
   </form></main>;

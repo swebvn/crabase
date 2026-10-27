@@ -1,3 +1,4 @@
+import { Button } from "../components/ui";
 import { memo, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { ChevronDown, Loader2, Terminal } from "lucide-react";
 import { MessageContent } from "../components/MessageContent";
@@ -205,18 +206,18 @@ export function ChatPage({
               <h2>{agentName} needs your approval</h2>
               <pre>{approvalText(approval)}</pre>
               <div className="dialog-actions">
-                <button
-                  className="button secondary"
+                <Button
+                  variant="secondary"
                   onClick={() => decide(approval.id, "decline")}
                 >
                   Decline
-                </button>
-                <button
-                  className="button primary"
+                </Button>
+                <Button
+                  variant="primary"
                   onClick={() => decide(approval.id, "accept")}
                 >
                   Approve once
-                </button>
+                </Button>
               </div>
             </section>
           ))}

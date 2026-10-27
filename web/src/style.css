@@ -1,17 +1,20 @@
-/* Base and shared controls */
+@import "./styles/controls.css";
+
+/* Base, authentication, and settings */
 .login-page {
   min-height: 100dvh;
   display: grid;
   place-items: center;
-  padding: var(--space-6);
+  padding: var(--space-3);
 }
 .login-form {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: var(--space-3);
   width: min(360px, 100%);
 }
 .login-form h1 { font-size: var(--type-section); }
+.login-form label { margin: 0; }
 .settings-page { width: 100%; max-width: 900px; margin: 0 auto; padding: var(--space-3); overflow: auto; }
 .settings-shell { height: 100dvh; overflow: auto; background: var(--paper); }
 .settings-page > h1 { font-size: var(--type-section); margin: var(--space-2) 0 var(--space-3); }
@@ -147,43 +150,6 @@ small {
 }
 .muted {
   color: var(--muted);
-}
-.icon-button {
-  width: 32px;
-  height: 32px;
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-small);
-  color: var(--subtle);
-}
-.icon-button:hover:not(:disabled),
-.icon-button.active,
-.text-button:hover {
-  background: var(--hover);
-  color: var(--text);
-}
-.button {
-  min-height: 36px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-2) var(--space-4);
-  border-radius: var(--radius-small);
-  font-size: var(--type-control);
-  font-weight: var(--weight-medium);
-}
-.primary {
-  background: var(--accent);
-  color: var(--on-accent);
-}
-.secondary {
-  border: 1px solid var(--line);
-  background: var(--paper);
-}
-.secondary:hover {
-  background: var(--hover);
 }
 .sr-only {
   position: absolute;
@@ -661,9 +627,6 @@ small {
   flex-basis: var(--workspace-width);
   border-left-width: 1px;
 }
-.workspace-right > *:not(.workspace-resize) {
-  min-width: min(var(--workspace-width), calc(100vw - 48px));
-}
 .workspace-right.open.focus {
   width: 0;
   flex-grow: 1;
@@ -672,6 +635,11 @@ small {
   width: 0;
   flex: 0 0 0;
   overflow: hidden;
+}
+@media (min-width: 761px) and (max-width: 1100px) {
+  .main-panel:has(+ .workspace-right.open) { display: none; }
+  .workspace-right.open { width: 0; flex: 1; }
+  .workspace-right.open > .workspace-resize { display: none; }
 }
 .workspace-bottom {
   flex: 0 0 0;
@@ -885,12 +853,20 @@ small {
   padding: var(--space-2);
   overflow: hidden;
 }
-.terminal-screen > div {
+.terminal-screen .terminal-emulator {
+  --term-fg: var(--text);
+  --term-bg: var(--terminal-background);
+  --term-cursor: var(--text);
+  --term-selection-bg: var(--terminal-selection);
+  --term-font-family: var(--font-editor);
+  --term-font-size: var(--type-label);
   height: 100%;
+  padding: 0;
+  border-radius: 0;
+  box-shadow: none;
 }
-.terminal-screen textarea {
-  caret-color: transparent !important;
-  background: transparent !important;
+.terminal-notice {
+  padding: var(--space-2);
 }
 .terminal-empty {
   padding: var(--space-2);
@@ -1481,7 +1457,7 @@ small {
 }
 .workspace-split {
   display: grid;
-  grid-template-columns: minmax(200px, 1fr) minmax(0, min(var(--navigator-width, 280px), 50%));
+  grid-template-columns: minmax(0, 1fr) minmax(0, min(var(--navigator-width, 280px), 50%));
   flex: 1;
   min-width: 0;
   min-height: 0;
@@ -1702,7 +1678,7 @@ small {
 }
 .workspace-code {
   flex: 1;
-  min-width: 520px;
+  min-width: 0;
   min-height: 0;
   overflow: auto;
   border: 0;
@@ -1722,9 +1698,6 @@ small {
   --diffs-gap-block: var(--space-2);
   --diffs-editor-line-highlight-border: var(--line);
   --diffs-editor-selection-bg: var(--terminal-selection);
-}
-@media (max-width: 760px) {
-  .workspace-code { min-width: 0; }
 }
 .workspace-code > * {
   min-width: 100%;
@@ -1862,40 +1835,19 @@ dialog::backdrop {
   object-fit: contain;
 }
 .dialog-inner {
-  padding: var(--space-6);
+  padding: var(--space-3);
 }
 .dialog-heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
-  margin-bottom: var(--space-5);
+  margin-bottom: var(--space-3);
 }
 .dialog-description {
   color: var(--subtle);
   font-size: var(--type-label);
   margin-bottom: var(--space-4);
-}
-label {
-  display: block;
-  font-size: var(--type-label);
-  font-weight: var(--weight-medium);
-  margin-bottom: var(--space-4);
-}
-label > input,
-label > select {
-  display: block;
-  width: 100%;
-  margin-top: var(--space-2);
-}
-input,
-label > select {
-  min-width: 0;
-  background: var(--paper);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-small);
-  padding: var(--space-2) var(--space-3);
-  font-size: var(--type-control);
 }
 .dialog-actions {
   display: flex;
@@ -2230,12 +2182,8 @@ legend {
   .message-time {
     margin-left: 0;
   }
-  .icon-button {
-    min-width: 36px;
-    min-height: 36px;
-  }
   .dialog-inner {
-    padding: var(--space-4);
+    padding: var(--space-3);
   }
 }
 @media (max-width: 760px) {
@@ -2263,15 +2211,10 @@ legend {
   }
 }
 @media (pointer: coarse) {
-  .icon-button,
-  .button,
   .chat-link,
   .nav-item,
   .project-label {
     min-height: 44px;
-  }
-  .icon-button {
-    min-width: 44px;
   }
   .model-picker > .icon-button {
     min-height: 44px;
