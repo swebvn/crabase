@@ -7,8 +7,11 @@ export function useRoute() {
     window.addEventListener("popstate", update);
     return () => window.removeEventListener("popstate", update);
   }, []);
-  const navigate = useCallback((path: string) => {
-    if (location.pathname !== path) history.pushState(null, "", path);
+  const navigate = useCallback((path: string, replace = false) => {
+    if (location.pathname !== path) {
+      if (replace) history.replaceState(null, "", path);
+      else history.pushState(null, "", path);
+    }
     setRoute(parseRoute(path));
   }, []);
   return { route, navigate };

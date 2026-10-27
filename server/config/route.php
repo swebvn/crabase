@@ -16,14 +16,12 @@ Route::get('/', function () {
     $index = public_path() . '/index.html';
     return is_file($index) ? response(file_get_contents($index))->header('Content-Type', 'text/html; charset=utf-8') : response('Build the frontend with npm run build, or open http://127.0.0.1:5173 during development.');
 });
-Route::get('/settings', function () {
-    $index = public_path().'/index.html';
-    return is_file($index) ? response(file_get_contents($index))->header('Content-Type','text/html; charset=utf-8') : response('Build the frontend first.');
-});
-Route::get('/chat/{id}', function () {
-    $index = public_path() . '/index.html';
-    return is_file($index) ? response(file_get_contents($index))->header('Content-Type', 'text/html; charset=utf-8') : response('Build the frontend first.');
-});
+foreach (['/settings', '/chat/{id}', '/project/{id}', '/project/{id}/new'] as $path) {
+    Route::get($path, function () {
+        $index = public_path() . '/index.html';
+        return is_file($index) ? response(file_get_contents($index))->header('Content-Type', 'text/html; charset=utf-8') : response('Build the frontend first.');
+    });
+}
 Route::get('/files/{chatId}/{name}', function (\support\Request $request, string $chatId, string $name) {
     if (!$actor = \app\service\Auth::user($request->cookie(\app\service\Auth::COOKIE))) return response('Authentication required', 401);
     if (!\app\service\ProjectAccess::canChat($actor, $chatId)) return response('Not found', 404);

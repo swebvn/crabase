@@ -9,10 +9,9 @@ export function readProjectExpansion() {
       collapsed: Array.isArray(saved?.collapsed)
         ? saved.collapsed.filter((id: unknown): id is string => typeof id === "string")
         : [],
-      projectsOpen: saved?.projectsOpen !== false,
     };
   } catch {
-    return { collapsed: [] as string[], projectsOpen: true };
+    return { collapsed: [] as string[] };
   }
 }
 
@@ -27,9 +26,6 @@ export function useProjectExpansion() {
   }, [state]);
   return {
     ...state,
-    toggleProjects: () => setState((current) => ({
-      ...current, projectsOpen: !current.projectsOpen,
-    })),
     toggleProject: (id: string) => setState((current) => ({
       ...current,
       collapsed: current.collapsed.includes(id)

@@ -2,6 +2,19 @@ import type { Chat, Project } from "../types";
 
 export type ProjectSort = "updated" | "name" | "created";
 
+export function rootProject(projectId: string | null | undefined, projects: Project[]) {
+  const project = projects.find(item => item.id === projectId);
+  return project?.parent_id ? projects.find(item => item.id === project.parent_id) : project;
+}
+
+export function resumeProjectChat(projectId: string, projects: Project[], chats: Chat[], remembered?: string) {
+  if (projectId && !projects.some(project => project.id === projectId)) return undefined;
+  const folders = new Set(projects.filter(project => project.id === projectId || (project.parent_id === projectId && !project.archived)).map(project => project.id));
+  const available = chats.filter(chat => !chat.archived && (projectId ? !!chat.project_id && folders.has(chat.project_id) : !chat.project_id));
+  return available.find(chat => chat.id === remembered)
+    || available.reduce<Chat | undefined>((latest, chat) => !latest || chat.updated_at > latest.updated_at ? chat : latest, undefined);
+}
+
 export function sortProjects(
   projects: Project[],
   chats: Chat[],

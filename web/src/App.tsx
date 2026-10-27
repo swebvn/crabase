@@ -6,9 +6,10 @@ import { Check } from "lucide-react";
 import { useRoute } from "./hooks/useRoute";
 import { useWorkspace } from "./hooks/useWorkspace";
 import { usePreferences } from "./hooks/usePreferences";
+import { useProjectNavigation } from "./hooks/useProjectNavigation";
 import { isSidebarShortcut } from "./lib/shortcuts";
 import { updateRecord } from "./lib/layout";
-import { chatPath } from "./lib/routes";
+import { chatPath, projectPath } from "./lib/routes";
 import { Sidebar } from "./components/Sidebar";
 import { Header } from "./components/Header";
 import { DetailsPanel } from "./components/DetailsPanel";
@@ -54,20 +55,21 @@ export function App() {
   const { data, live, loaded, messages, approvals, error, setError, request, terminalChatId, hasMoreMessages, loadingEarlier, loadEarlier } =
     workspace;
   const preferences = usePreferences(data.users);
-  const [projectId, setProjectId] = useState("");
-  const chat = data.chats.find((item) => item.id === selected);
-  const project = data.projects.find((item) => item.id === (selected ? chat?.project_id : projectId));
+  const { chat, projectId, project, scope, switchProject, backFromSettings } = useProjectNavigation(route, data.projects, data.chats, loaded, user.id, navigate);
   const [worktreeProject, setWorktreeProject] = useState<Project | null>(null);
-  const previousProjects = useRef(data.projects);
-  const [draftVersion, setDraftVersion] = useState(0);
+  const [, refreshDraft] = useState(0);
   const [busy, setBusy] = useState(false);
   const sending = useRef(false);
-  const draftRef = useRef("");
-  const draftChat = useRef('');
+  const drafts = useRef(new Map<string, { current: string; chatId: string; version: number }>());
+  const draftKey = selected ? `chat:${selected}` : `new:${projectId}`;
+  if (!drafts.current.has(draftKey)) drafts.current.set(draftKey, { current: "", chatId: "", version: 0 });
+  const draftRef = drafts.current.get(draftKey)!;
+  const draftVersion = draftRef.version;
   function clearDraft() {
-    draftChat.current = '';
+    draftRef.chatId = '';
     draftRef.current = "";
-    setDraftVersion((version) => version + 1);
+    draftRef.version += 1;
+    refreshDraft((version) => version + 1);
   }
   const [dialog, setDialog] = useState<"" | "search" | "project" | "settings">(
     "",
@@ -76,7 +78,7 @@ export function App() {
   const [sidebarHidden, setSidebarHidden] = useState(
     () => localStorage.getItem("crabase-sidebar-hidden") === "true",
   );
-  const workspaceKey = selected || "new";
+  const workspaceKey = draftKey;
   const [workspaceLayouts, setWorkspaceLayouts] = useState<Record<string, ThreadWorkspaceLayout>>({});
   const currentWorkspace = workspaceLayouts[workspaceKey] || emptyThreadWorkspace();
   const workspaceTab = currentWorkspace.tab;
@@ -198,16 +200,20 @@ export function App() {
     navigate(chatPath(id));
     setSidebar(false);
     setDialog("");
-    clearDraft();
     setError("");
   }
-  function newChat(id = "") {
+  function newChat(id = scope?.id || "") {
     setFileSearch(false);
-    setProjectId(id);
-    navigate("/");
+    navigate(id ? projectPath(id, true) : "/");
     setSidebar(false);
     setDialog("");
-    clearDraft();
+    setError("");
+  }
+  function changeProject(id: string) {
+    setFileSearch(false);
+    switchProject(id);
+    setSidebar(false);
+    setDialog("");
     setError("");
   }
   useEffect(() => {
@@ -277,14 +283,14 @@ export function App() {
     setBusy(true);
     setError("");
     try {
-      let id = selected || draftChat.current;
+      let id = selected || draftRef.chatId;
       if (!id) {
         const result = await request<{ id: string }>("create", {
           project_id: projectId || null,
           title: body.slice(0, 90) || 'Attachments',
         });
         id = result.id;
-        draftChat.current = id;
+        draftRef.chatId = id;
       }
       await request("message", {
         ...options,
@@ -293,7 +299,8 @@ export function App() {
         user_id: data.users.find((user) => user.name === preferences.name)?.id,
       });
       if (draftRef.current.trim() === body) clearDraft();
-      if (!selected) navigate(chatPath(id));
+      // A completed send must not pull the reader out of another project.
+      if (!selected && location.pathname === (projectId ? projectPath(projectId, true) : "/")) navigate(chatPath(id));
       return true;
     } catch (error) {
       setError((error as Error).message);
@@ -329,14 +336,9 @@ export function App() {
       setToast(action === "projectDelete" ? "Project deleted" : target.archived ? "Project restored" : "Project archived");
     } catch (error) { setError((error as Error).message); }
   }
-  useEffect(() => {
-    // A create response can arrive before its snapshot patch. Only clear a project that was actually removed.
-    if (loaded && projectId && previousProjects.current.some((item) => item.id === projectId) && !data.projects.some((item) => item.id === projectId)) setProjectId("");
-    previousProjects.current = data.projects;
-    if (loaded && selected && !data.chats.some((item) => item.id === selected)) newChat();
-  }, [loaded, data.projects, data.chats, selected, projectId]);
   const composer = (
     <Composer
+      key={draftKey}
       {...{
         chat,
         project,
@@ -361,7 +363,7 @@ export function App() {
     return { ...current, dock: next };
   });
   const visibleWorkspaceTab = workspaceTab || (currentWorkspace.last === "code" && !project ? "start" : currentWorkspace.last);
-  const workspacePanel = selected && loaded && <WorkspacePanel
+  const workspacePanel = selected && chat && loaded && <WorkspacePanel
     active={visibleWorkspaceTab}
     codeAvailable={!!project}
     dock={workspaceDock}
@@ -390,7 +392,7 @@ export function App() {
   </WorkspacePanel>;
   if (route.page === "settings" || user.avatar_required) return <main className="settings-shell">
     <Suspense fallback={<p role="status">Loading settings…</p>}>
-      <SettingsPage request={request} projects={data.projects} loaded={loaded} back={() => navigate('/')} {...preferences} />
+      <SettingsPage request={request} projects={data.projects} loaded={loaded} back={backFromSettings} {...preferences} />
     </Suspense>
   </main>;
   return (
@@ -406,6 +408,9 @@ export function App() {
         chats={data.chats}
         selected={selected}
         activeProjectId={project?.id}
+        currentProject={scope}
+        loaded={loaded}
+        switchProject={changeProject}
         name={preferences.name}
         avatars={preferences.avatars}
         visible={sidebar}
@@ -450,14 +455,17 @@ export function App() {
         />
         <div className="content-layout">
           <div className="main-content">
-            {route.page === "missing" ? (
+            {route.page === "missing" || (loaded && ((route.page === "project" && !project) || (route.page === "chat" && !chat))) ? (
               <section className="empty-state">
-                <h1>Page not found</h1>
-                <Button variant="secondary" onClick={() => newChat()}>
-                  New chat
+                <h1>{route.page === "project" ? "Project unavailable" : route.page === "chat" ? "Chat unavailable" : "Page not found"}</h1>
+                {route.page !== "missing" && <p>It may have been removed, or you may no longer have access.</p>}
+                <Button variant="secondary" onClick={() => changeProject("")}>
+                  Standalone chats
                 </Button>
               </section>
-            ) : route.page === "new" ? (
+            ) : route.page === "project" && (!loaded || !route.newChat) ? (
+              <p className="loading-state" role="status">Opening project…</p>
+            ) : route.page === "new" || route.page === "project" ? (
               <NewChatPage hasProject={!!project}>{composer}</NewChatPage>
             ) : (
               <ChatPage
@@ -507,7 +515,7 @@ export function App() {
           <ProjectDialog
             request={request}
             added={(id) => {
-              newChat(id);
+              changeProject(id);
               setToast("Project opened");
             }}
             close={() => setDialog("")}

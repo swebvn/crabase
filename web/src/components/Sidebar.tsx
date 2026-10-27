@@ -1,9 +1,5 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import {
-  ChevronDown,
-  ChevronRight,
-  Folder,
-  FolderOpen,
   GitBranch,
   Loader2,
   MoreHorizontal,
@@ -15,19 +11,13 @@ import {
 } from "lucide-react";
 import type { Avatars, Chat, Project } from "../types";
 import { Avatar, AvatarStack } from "./Avatar";
-import { Crab } from "./Crab";
-import { IconButton, Menu, MenuItem, MenuLabel } from "./ui";
+import { IconButton, Menu, MenuItem } from "./ui";
 import { useProjectExpansion } from "../hooks/useProjectExpansion";
 import { clampSidebarWidth } from "../lib/layout";
-import { sortProjects, type ProjectSort } from "../lib/projects";
-const projectSortStorageKey = "crabase.project-sort";
+import { sortProjects } from "../lib/projects";
+import { ProjectSwitcher } from "./ProjectSwitcher";
 const widthStorageKey = "crabase-sidebar-width";
 const modifierKey = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl";
-
-function storedProjectSort(): ProjectSort {
-  const value = localStorage.getItem(projectSortStorageKey);
-  return value === "updated" || value === "name" || value === "created" ? value : "created";
-}
 
 type Props = {
   projects: Project[];
@@ -37,6 +27,9 @@ type Props = {
   chats: Chat[];
   selected: string;
   activeProjectId?: string;
+  currentProject?: Project;
+  loaded: boolean;
+  switchProject: (id: string) => void;
   name: string;
   avatars: Avatars;
   visible: boolean;
@@ -132,6 +125,9 @@ export function Sidebar({
   selected,
   name,
   activeProjectId,
+  currentProject,
+  loaded,
+  switchProject,
   avatars,
   visible,
   hidden,
@@ -145,34 +141,28 @@ export function Sidebar({
   createWorktree,
 }: Props) {
   const [showArchived, setShowArchived] = useState(false);
-  useEffect(() => {
-    const toggle = () => setShowArchived((value) => !value);
-    window.addEventListener("crabase:toggle-archived", toggle);
-    return () => window.removeEventListener("crabase:toggle-archived", toggle);
-  }, []);
   const [width, setWidth] = useState(() => clampSidebarWidth(Number(localStorage.getItem(widthStorageKey)) || 232));
   const [resizing, setResizing] = useState(false);
   useEffect(() => localStorage.setItem(widthStorageKey, String(width)), [width]);
   const [showAll, setShowAll] = useState<string[]>([]);
-  const [projectSort, setProjectSort] = useState<ProjectSort>(storedProjectSort);
   const dragOffset = useRef(0);
-  const { collapsed, projectsOpen, toggleProjects, toggleProject } = useProjectExpansion();
+  const { collapsed, toggleProject } = useProjectExpansion();
   useEffect(() => {
-    localStorage.setItem(projectSortStorageKey, projectSort);
-  }, [projectSort]);
-  const activeParent = projects.find((project) => project.id === activeProjectId)?.parent_id;
-  useEffect(() => {
-    if (!activeProjectId) return;
-    if (!projectsOpen && !pins.includes(activeParent || activeProjectId)) toggleProjects();
-    for (const id of [activeParent, activeProjectId]) if (id && collapsed.includes(id)) toggleProject(id);
-  }, [activeProjectId, activeParent]);
-  const visibleProjects = sortProjects(projects.filter((project) => showArchived || !project.archived), chats, projectSort).filter((project) => !project.parent_id);
-  const pinnedProjects = visibleProjects.filter((project) => pins.includes(project.id));
-  const standaloneChats = chats.filter((chat) => !chat.project_id && !chat.archived);
-  const renderProjects = (items: Project[]): ReactNode => items.map((project) => {
+    if (activeProjectId && collapsed.includes(activeProjectId)) toggleProject(activeProjectId);
+  }, [activeProjectId, selected]);
+  const directChats = chats.filter(chat => (currentProject ? chat.project_id === currentProject.id : !chat.project_id) && (!chat.archived || chat.id === selected));
+  const worktrees = currentProject ? sortProjects(projects.filter(child => child.parent_id === currentProject.id && (showArchived || !child.archived || child.id === activeProjectId)), chats, "updated") : [];
+  const projectMenu = (project: Project) => <Menu viewport label={`Project options for ${project.name}`} icon={<MoreHorizontal size={16} />}>
+    {!project.parent_id && <MenuItem onClick={() => pinProject(project)}>{pins.includes(project.id) ? "Unpin" : "Pin"}</MenuItem>}
+    {admin && !project.parent_id && !project.archived && <MenuItem onClick={() => createWorktree(project)}>Create worktree</MenuItem>}
+    {!project.parent_id && <MenuItem selected={showArchived} onClick={() => setShowArchived(value => !value)}>Show archived worktrees</MenuItem>}
+    {admin && <><MenuItem onClick={() => manageProject(project, "projectArchive")}>{project.archived ? "Restore" : "Archive"}</MenuItem>
+      <MenuItem onClick={() => manageProject(project, "projectDelete")}>Delete</MenuItem></>}
+  </Menu>;
+  const renderWorktree = (project: Project) => {
     const expanded = !collapsed.includes(project.id);
     const projectChats = chats.filter(
-      (chat) => chat.project_id === project.id && !chat.archived,
+      (chat) => chat.project_id === project.id && (!chat.archived || chat.id === selected),
     );
     const shownChats = showAll.includes(project.id)
       ? projectChats
@@ -181,7 +171,7 @@ export function Sidebar({
       || projects.some((child) => child.id === chat.project_id && child.parent_id === project.id)));
     return (
       <section
-        className={`project-group ${project.parent_id ? 'worktree-group' : ''}`}
+        className="project-group worktree-group"
         key={project.id}
         aria-label={project.name}
       >
@@ -192,25 +182,12 @@ export function Sidebar({
             aria-controls={`project-${project.id}`}
             onClick={() => toggleProject(project.id)}
           >
-            {project.parent_id ? <GitBranch size={16} /> : expanded ? (
-              <FolderOpen size={16} />
-            ) : (
-              <Folder size={16} />
-            )}
+            <GitBranch size={16} aria-hidden="true" />
             <span className="truncate" title={project.parent_id ? `${project.name}\n${project.path}` : project.name}>{project.name}{project.archived ? " · Archived" : ""}</span>
             {busy && <Loader2 size={13} className="spin" aria-label="Agent working" />}
           </button>
           <div className="project-actions">
-          {(!project.parent_id || admin) && <Menu viewport label={`Project options for ${project.name}`} icon={<MoreHorizontal size={14} />}>
-            {!project.parent_id && <MenuItem onClick={() => pinProject(project)}>
-              {pins.includes(project.id) ? "Unpin" : "Pin"}
-            </MenuItem>}
-            {admin && !project.parent_id && !project.archived && <MenuItem onClick={() => createWorktree(project)}>Create worktree</MenuItem>}
-            {admin && <><MenuItem onClick={() => manageProject(project, "projectArchive")}>
-              {project.archived ? "Restore" : "Archive"}
-            </MenuItem>
-            <MenuItem onClick={() => manageProject(project, "projectDelete")}>Delete</MenuItem></>}
-          </Menu>}
+          {admin && projectMenu(project)}
           <IconButton
             label={`New chat in ${project.name}`}
             onClick={() => newChat(project.id)}
@@ -240,12 +217,11 @@ export function Sidebar({
                 Load more ({projectChats.length - shownChats.length})
               </button>
             )}
-            {!project.parent_id && renderProjects(sortProjects(projects.filter((child) => child.parent_id === project.id && (showArchived || !child.archived)), chats, 'updated'))}
           </div>
         )}
       </section>
     );
-  });
+  };
   return (
     <>
       <button
@@ -260,11 +236,9 @@ export function Sidebar({
         id="workspace-sidebar"
         style={{ "--sidebar-width": `${width}px` } as CSSProperties}
       >
-        <div className="brand-row">
-          <button className="brand" onClick={() => newChat()}>
-            <Crab size={26} />
-            <span>Crabase</span>
-          </button>
+        <div className="sidebar-heading">
+          <ProjectSwitcher projects={projects} chats={chats} pins={pins} current={currentProject} loaded={loaded} admin={admin}
+            select={switchProject} add={() => showDialog("project")} />
           <IconButton label="Close sidebar" onClick={close}>
             <PanelLeft size={17} />
           </IconButton>
@@ -272,7 +246,7 @@ export function Sidebar({
         <nav aria-label="Workspace" className="primary-nav">
           <button
             className={`nav-item ${!selected ? "selected" : ""}`}
-            onClick={() => newChat()}
+            onClick={() => newChat(currentProject?.id)}
           >
             <SquarePen size={17} />
             <span>New chat</span>
@@ -280,61 +254,15 @@ export function Sidebar({
           </button>
         </nav>
         <div className="sidebar-scroll">
-          {pinnedProjects.length > 0 && <section aria-label="Pins">
-            <div className="section-label">Pins</div>
-            {renderProjects(pinnedProjects)}
-          </section>}
           <div className="section-label">
-            <button
-              aria-expanded={projectsOpen}
-              aria-controls="project-list"
-              onClick={toggleProjects}
-            >
-              Projects
-              {projectsOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-            </button>
-            <div className="section-actions">
-              <Menu label="Sort projects" icon={<MoreHorizontal size={16} />}>
-                <MenuLabel>Sort by</MenuLabel>
-                {(
-                  [
-                    ["updated", "Latest update"],
-                    ["name", "Name"],
-                    ["created", "Default (created)"],
-                  ] as const
-                ).map(([value, label]) => (
-                  <MenuItem
-                    key={value}
-                    selected={projectSort === value}
-                    onClick={() => setProjectSort(value)}
-                  >
-                    {label}
-                  </MenuItem>
-                ))}
-                <MenuItem selected={showArchived} onClick={() => setShowArchived((value) => !value)}>
-                  Show archived projects
-                </MenuItem>
-              </Menu>
-              {admin && <IconButton
-                label="Add project"
-                onClick={() => showDialog("project")}
-              >
-                <Plus size={15} />
-              </IconButton>}
-            </div>
+            <span>{currentProject?.archived ? "Chats · Archived project" : "Chats"}</span>
+            {currentProject && projectMenu(currentProject)}
           </div>
-          {projectsOpen && (
-            <div id="project-list">
-              {renderProjects(visibleProjects.filter((project) => !pins.includes(project.id)))}
-            </div>
-          )}
-          {standaloneChats.length > 0 && <div className="section-label">Chats</div>}
-          {standaloneChats.map((chat) => (
-            <ChatLink
-              key={chat.id}
-              {...{ chat, selected, avatars, open, archive, rename }}
-            />
-          ))}
+          {!loaded && !chats.length && <p className="sidebar-empty" role="status">Loading chats…</p>}
+          {directChats.map(chat => <ChatLink key={chat.id} {...{ chat, selected, avatars, open, archive, rename }} />)}
+          {loaded && !directChats.length && <p className="sidebar-empty">No chats yet.</p>}
+          {!!worktrees.length && <div className="section-label">Worktrees</div>}
+          {worktrees.map(renderWorktree)}
         </div>
         <div className="profile-row">
           <button

@@ -294,21 +294,38 @@ small {
   padding-left: 0;
   border-right-width: 0;
 }
-.brand-row {
+.sidebar-heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 var(--space-1) var(--space-3);
 }
-.brand {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-1);
-  font-size: var(--type-section);
-  font-weight: var(--weight-medium);
-  letter-spacing: -0.5px;
-}
+.project-switcher.text-button { display: flex; align-items: center; gap: var(--space-2); min-width: 0; flex: 1; min-height: 40px; padding: var(--space-1); text-align: left; }
+.project-switcher > span { flex: 1; }
+.project-switcher svg { flex-shrink: 0; }
+.project-switcher-dialog { width: min(460px, calc(100vw - 24px)); }
+.project-switcher-dialog .dialog-inner { display: flex; flex-direction: column; gap: var(--space-3); }
+.project-switcher-dialog .dialog-heading { margin: 0; }
+.project-switcher-search { position: relative; }
+.project-switcher-search > svg { position: absolute; left: var(--space-3); top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
+.project-switcher-search > input { width: 100%; padding-left: var(--space-8); }
+.project-switcher-option.text-button { display: flex; align-items: center; gap: var(--space-2); width: 100%; text-align: left; min-height: 44px; }
+.project-switcher-option > svg { flex-shrink: 0; color: var(--subtle); }
+.project-switcher-option > span { flex: 1; min-width: 0; }
+.project-switcher-option[aria-pressed="true"] { background: var(--hover); }
+.project-switcher-copy strong { display: block; font-weight: var(--weight-medium); overflow-wrap: anywhere; }
+.project-switcher-copy small { display: block; color: var(--subtle); font-size: var(--type-meta); }
+.project-switcher-toolbar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.project-switcher-toolbar label, .project-switcher-toolbar input { margin: 0; }
+.project-switcher-toolbar label { font-size: var(--type-meta); color: var(--subtle); font-weight: var(--weight-regular); }
+.project-switcher-toolbar input { width: 16px; height: 16px; }
+.project-switcher-toolbar .menu-content { padding: var(--space-1); }
+.project-switcher-list { min-height: 48px; max-height: 45dvh; overflow-y: auto; }
+.project-switcher-list h3 { padding: var(--space-1) var(--space-2); font-size: var(--type-meta); color: var(--subtle); }
+.project-switcher-list section + section { margin-top: var(--space-2); }
+.project-switcher-list > p { padding: var(--space-2); font-size: var(--type-label); }
+.project-switcher-footer { border-top: 1px solid var(--line); padding-top: var(--space-3); }
+.sidebar-empty { padding: var(--space-2); font-size: var(--type-meta); color: var(--muted); }
 .primary-nav {
   display: grid;
   gap: var(--space-1);
@@ -366,35 +383,16 @@ small {
   font-size: var(--type-meta);
   font-weight: var(--weight-medium);
 }
-.section-label > button:not(.icon-button) {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  padding: 0;
-  text-align: left;
-}
-.section-actions,
-.menu {
-  display: flex;
-}
-.section-actions .icon-button,
+.menu { display: flex; position: relative; }
 .project-actions {
   opacity: 0;
   pointer-events: none;
 }
-.section-label:hover .section-actions .icon-button,
-.section-label:has(:focus-visible) .section-actions .icon-button,
 .project-row:hover .project-actions,
 .project-row:has(:focus-visible) .project-actions,
 .project-row:has(.icon-button[aria-expanded="true"]) .project-actions {
   opacity: 1;
   pointer-events: auto;
-}
-.menu {
-  position: relative;
-}
-.section-actions .menu {
-  position: static;
 }
 .menu-content {
   position: absolute;
@@ -408,9 +406,6 @@ small {
   border-radius: var(--radius-small);
   background: var(--paper);
   box-shadow: var(--shadow-dialog);
-}
-.section-actions .menu-content {
-  width: min(220px, calc(var(--sidebar-width) - 32px));
 }
 .viewport-menu {
   position: fixed;
@@ -506,7 +501,7 @@ small {
   display: grid;
   padding-bottom: var(--space-2);
 }
-.worktree-group { margin-left: var(--space-2); min-width: 0; }
+.worktree-group { min-width: 0; }
 .chat-row {
   position: relative;
   min-width: 0;
@@ -2262,6 +2257,7 @@ legend {
   }
 }
 @media (pointer: coarse) {
+  .project-switcher.text-button,
   .chat-link,
   .nav-item,
   .project-label {
@@ -2271,13 +2267,7 @@ legend {
     min-height: 44px;
   }
 }
-@media (max-width: 760px) {
-  .sidebar .worktree-group {
-    margin-left: var(--space-1);
-  }
-}
 @media (hover: none) {
-  .section-actions .icon-button,
   .sidebar .project-row .icon-button,
   .sidebar .chat-menu > .icon-button {
     width: 32px;
@@ -2310,6 +2300,7 @@ legend {
   *::after {
     scroll-behavior: auto !important;
   }
+  dialog,
   .sidebar,
   .sidebar-scrim,
   .right-panel,

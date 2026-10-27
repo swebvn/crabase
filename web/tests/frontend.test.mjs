@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseRoute, chatPath } from "../src/lib/routes.ts";
+import { parseRoute, chatPath, projectPath } from "../src/lib/routes.ts";
 import { applyMessagePatch, nextStreamText } from "../src/lib/messages.ts";
 import { avatarUrl, validAvatarUrl } from "../src/lib/identity.ts";
 
@@ -17,6 +17,16 @@ test("chat routes support direct loads without interpreting arbitrary paths", ()
     `/chat/${id}/extra`,
   ])
     assert.equal(parseRoute(path).page, "missing");
+});
+
+test("project routes distinguish reopening a workspace from creating a chat", () => {
+  for (const id of ["crabase", "project-a", "fb6904dc4c961211"]) {
+    assert.deepEqual(parseRoute(projectPath(id)), { page: "project", id, newChat: false });
+    assert.deepEqual(parseRoute(projectPath(id, true)), { page: "project", id, newChat: true });
+    assert.deepEqual(parseRoute(`/project/${id}/new/`), { page: "project", id, newChat: true });
+  }
+  for (const path of ["/project/", "/project/../", "/project/%2Fetc", "/project/a/settings", "/project/a/new/extra", `/project/${"a".repeat(65)}`])
+    assert.equal(parseRoute(path).page, "missing", path);
 });
 
 test("stream patches upsert, append and order messages without mutating previous state", () => {

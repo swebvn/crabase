@@ -102,18 +102,19 @@ Use 6–8px radii for rows and controls, 16–20px for the composer and dialogs,
 
 - Desktop sidebar width is draggable from its right edge, from 200px to a maximum of 500px (default 232px). The separator supports Left/Right arrows and Home/End. Persist the width in browser localStorage and do not animate it while dragging. Mobile keeps the fixed-width drawer.
 
-- Keep “New chat”, search, standalone chats, projects, and the user profile easy to scan.
+- Put the project switcher at the top of the sidebar. It offers searchable projects, pinned projects, archived projects, and Standalone chats. Keep “New chat”, search, and the user profile easy to scan.
+- Show only the selected project’s conversations and worktrees in the sidebar. Standalone chats have their own scope and never acquire a project. Global search can open a chat in another project and switches the sidebar with it.
+- `/project/<id>` restores that project’s last accessible, unarchived conversation for the signed-in user on this browser, falling back to its most recent chat. `/project/<id>/new` opens a new-chat composer. Keep existing `/chat/<id>` links working and derive their project from the authorized snapshot.
+- Preserve text drafts separately for each conversation and new-project composer while navigating. Settings returns to the workspace the reader left. Unavailable projects or chats show an explicit recovery state.
 - Place chat search as an icon beside Settings in the bottom profile row; keep the ⌘K shortcut.
-- Clicking “Projects” expands or collapses the project groups. Use a keyboard-operable button with `aria-expanded`.
-- Persist the Projects section and individual project expansion states in browser localStorage.
-- Clicking a project label toggles that project’s chats. Use closed/open folder icons to communicate state; no additional right-side chevron.
-- The adjacent plus button starts a new chat for that project.
+- Worktree labels toggle their chats with a keyboard-operable button and `aria-expanded`. Persist worktree expansion in browser localStorage. Use a branch icon and an adjacent plus button to start a chat in that worktree.
+- “New chat” and its keyboard shortcut create a chat in the selected project’s original folder; worktree plus buttons explicitly select the worktree.
 - Projects default to private (including existing projects on migration). Admins manage sharing in Settings → Admin → Projects, not the workspace sidebar menu. Select a project to choose members or make it public to all signed-in users. Admins always have access; child worktrees inherit access. Keep sharing compact and enforce it on the server, including live updates and artifacts. This is application authorization, not shell/OS isolation.
-- Original-folder chats stay directly under their project. Worktrees appear below them as shallow, collapsible branch-icon groups, each reusing the same chat rows, plus action and five-chat Load more behavior. Sort worktree groups by latest chat activity independently of the project's direct chats; include child activity when sorting top-level projects. Offer worktree creation in the original project's menu, without adding an extra workspace dashboard.
+- Original-folder chats appear directly in the scoped sidebar. Worktrees appear below them as collapsible branch-icon groups, each reusing the same chat rows, plus action and five-chat Load more behavior. Sort worktree groups by latest chat activity independently of the project's direct chats; include child activity when sorting top-level projects. Offer worktree creation in the original project's menu, without adding an extra workspace dashboard.
 - Chat rows use the full available width. Selected rows get one quiet background treatment.
 - Show participant avatar stacks for both project and standalone chats. Do not use generic people or message icons as substitutes.
 - Keep running state recognizable without replacing participant identity or making the row jump. A collapsed project or worktree shows a spinner while any chat inside it is running.
-- The selected chat stays visible: selecting a chat expands its project, and it is listed even beyond the five-chat limit.
+- The selected chat stays visible: selecting a chat switches to its parent project and expands its worktree, including chats beyond the five-chat limit and a selected archived chat with its restore action.
 - Row actions appear on hover or keyboard focus. Project actions overlay the end of the label so the name never re-truncates; on devices without hover they are always visible and sit beside the label.
 - Shortcut hints name the platform modifier (⌘ on Apple devices, Ctrl elsewhere). New chat is ⌘/Ctrl+Shift+O, because browsers reserve ⌘/Ctrl+N; N still works where the browser passes it through.
 
