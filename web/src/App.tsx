@@ -9,7 +9,8 @@ import { usePreferences } from "./hooks/usePreferences";
 import { useProjectNavigation } from "./hooks/useProjectNavigation";
 import { isSidebarShortcut } from "./lib/shortcuts";
 import { updateRecord } from "./lib/layout";
-import { chatPath, projectPath } from "./lib/routes";
+import { chatPath, newChatPath } from "./lib/routes";
+import { rootProject } from "./lib/projects";
 import { Sidebar } from "./components/Sidebar";
 import { Header } from "./components/Header";
 import { DetailsPanel } from "./components/DetailsPanel";
@@ -55,7 +56,7 @@ export function App() {
   const { data, live, loaded, messages, approvals, error, setError, request, terminalChatId, hasMoreMessages, loadingEarlier, loadEarlier } =
     workspace;
   const preferences = usePreferences(data.users);
-  const { chat, projectId, project, scope, switchProject, backFromSettings } = useProjectNavigation(route, data.projects, data.chats, loaded, user.id, navigate);
+  const { chat, projectId, project, scope, focused, focusScope, unavailable, switchProject, overview, backFromSettings } = useProjectNavigation(route, data.projects, data.chats, loaded, user.id, navigate);
   const [worktreeProject, setWorktreeProject] = useState<Project | null>(null);
   const [, refreshDraft] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -197,14 +198,15 @@ export function App() {
   const [toast, setToast] = useState("");
   function open(id: string) {
     setFileSearch(false);
-    navigate(chatPath(id));
+    const target = data.chats.find(chat => chat.id === id);
+    navigate(chatPath(id, focused ? rootProject(target?.project_id, data.projects)?.id : undefined));
     setSidebar(false);
     setDialog("");
     setError("");
   }
-  function newChat(id = scope?.id || "") {
+  function newChat(id = focused ? scope?.id || "" : "") {
     setFileSearch(false);
-    navigate(id ? projectPath(id, true) : "/");
+    navigate(newChatPath(id, focused));
     setSidebar(false);
     setDialog("");
     setError("");
@@ -212,6 +214,13 @@ export function App() {
   function changeProject(id: string) {
     setFileSearch(false);
     switchProject(id);
+    setSidebar(false);
+    setDialog("");
+    setError("");
+  }
+  function showOverview() {
+    setFileSearch(false);
+    overview();
     setSidebar(false);
     setDialog("");
     setError("");
@@ -255,7 +264,7 @@ export function App() {
     };
     window.addEventListener("keydown", key, true);
     return () => window.removeEventListener("keydown", key, true);
-  }, [navigate, selected, project?.id, workspaceTab, terminal]);
+  }, [navigate, selected, project?.id, focused, workspaceTab, terminal]);
   useEffect(() => {
     if (!toast) return;
     const timer = setTimeout(() => setToast(""), 2600);
@@ -278,6 +287,7 @@ export function App() {
   }
   async function send(options: SendOptions) {
     const body = draftRef.current.trim();
+    const sourcePath = location.pathname;
     if ((!body && !options.attachments?.length) || sending.current) return false;
     sending.current = true;
     setBusy(true);
@@ -300,7 +310,7 @@ export function App() {
       });
       if (draftRef.current.trim() === body) clearDraft();
       // A completed send must not pull the reader out of another project.
-      if (!selected && location.pathname === (projectId ? projectPath(projectId, true) : "/")) navigate(chatPath(id));
+      if (!selected && location.pathname === sourcePath) navigate(chatPath(id, focused ? scope?.id || projectId : undefined));
       return true;
     } catch (error) {
       setError((error as Error).message);
@@ -363,7 +373,7 @@ export function App() {
     return { ...current, dock: next };
   });
   const visibleWorkspaceTab = workspaceTab || (currentWorkspace.last === "code" && !project ? "start" : currentWorkspace.last);
-  const workspacePanel = selected && chat && loaded && <WorkspacePanel
+  const workspacePanel = selected && chat && loaded && !unavailable && <WorkspacePanel
     active={visibleWorkspaceTab}
     codeAvailable={!!project}
     dock={workspaceDock}
@@ -408,7 +418,9 @@ export function App() {
         chats={data.chats}
         selected={selected}
         activeProjectId={project?.id}
-        currentProject={scope}
+        currentProject={focusScope}
+        focused={focused}
+        overview={showOverview}
         loaded={loaded}
         switchProject={changeProject}
         name={preferences.name}
@@ -455,12 +467,12 @@ export function App() {
         />
         <div className="content-layout">
           <div className="main-content">
-            {route.page === "missing" || (loaded && ((route.page === "project" && !project) || (route.page === "chat" && !chat))) ? (
+            {route.page === "missing" || (loaded && (unavailable || ((route.page === "project" || (route.page === "new" && route.projectId)) && !project) || (route.page === "chat" && !chat))) ? (
               <section className="empty-state">
-                <h1>{route.page === "project" ? "Project unavailable" : route.page === "chat" ? "Chat unavailable" : "Page not found"}</h1>
+                <h1>{route.page === "project" || route.page === "new" ? "Project unavailable" : route.page === "chat" ? "Chat unavailable" : "Page not found"}</h1>
                 {route.page !== "missing" && <p>It may have been removed, or you may no longer have access.</p>}
-                <Button variant="secondary" onClick={() => changeProject("")}>
-                  Standalone chats
+                <Button variant="secondary" onClick={() => newChat("")}>
+                  Back to overview
                 </Button>
               </section>
             ) : route.page === "project" && (!loaded || !route.newChat) ? (
@@ -515,7 +527,8 @@ export function App() {
           <ProjectDialog
             request={request}
             added={(id) => {
-              changeProject(id);
+              if (focused) changeProject(id);
+              else newChat(id);
               setToast("Project opened");
             }}
             close={() => setDialog("")}

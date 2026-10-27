@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseRoute, chatPath, projectPath } from "../src/lib/routes.ts";
+import { parseRoute, chatPath, newChatPath, projectPath } from "../src/lib/routes.ts";
 import { applyMessagePatch, nextStreamText } from "../src/lib/messages.ts";
 import { avatarUrl, validAvatarUrl } from "../src/lib/identity.ts";
 
@@ -26,6 +26,18 @@ test("project routes distinguish reopening a workspace from creating a chat", ()
     assert.deepEqual(parseRoute(`/project/${id}/new/`), { page: "project", id, newChat: true });
   }
   for (const path of ["/project/", "/project/../", "/project/%2Fetc", "/project/a/settings", "/project/a/new/extra", `/project/${"a".repeat(65)}`])
+    assert.equal(parseRoute(path).page, "missing", path);
+});
+
+test("overview and focused chat URLs keep navigation mode explicit on refresh and history", () => {
+  const id = "fb6904dc4c961211";
+  assert.deepEqual(parseRoute(chatPath(id)), { page: "chat", id });
+  assert.deepEqual(parseRoute(chatPath(id, "project-a")), { page: "chat", id, projectId: "project-a" });
+  assert.deepEqual(parseRoute(newChatPath("project-a")), { page: "new", projectId: "project-a" });
+  assert.deepEqual(parseRoute(newChatPath("project-a", true)), { page: "project", id: "project-a", newChat: true });
+  assert.equal(newChatPath("", true), "/");
+  assert.deepEqual(parseRoute(`/project/a/chat/${id}/`), { page: "chat", id, projectId: "a" });
+  for (const path of ["/new/", "/new/a/extra", "/new/%2fetc", "/project/a/chat/", `/project/a/chat/${id}/extra`])
     assert.equal(parseRoute(path).page, "missing", path);
 });
 

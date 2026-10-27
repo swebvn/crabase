@@ -16,7 +16,7 @@ Route::get('/', function () {
     $index = public_path() . '/index.html';
     return is_file($index) ? response(file_get_contents($index))->header('Content-Type', 'text/html; charset=utf-8') : response('Build the frontend with npm run build, or open http://127.0.0.1:5173 during development.');
 });
-foreach (['/settings', '/chat/{id}', '/project/{id}', '/project/{id}/new'] as $path) {
+foreach (['/settings', '/chat/{id}', '/new/{id}', '/project/{id}', '/project/{id}/new', '/project/{projectId}/chat/{id}'] as $path) {
     Route::get($path, function () {
         $index = public_path() . '/index.html';
         return is_file($index) ? response(file_get_contents($index))->header('Content-Type', 'text/html; charset=utf-8') : response('Build the frontend first.');

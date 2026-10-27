@@ -1,20 +1,17 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
 import { Check, ChevronsUpDown, Folder, Loader2, MessageSquare, MoreHorizontal, Plus, Search } from "lucide-react";
 import type { Chat, Project } from "../types";
 import { sortProjects, type ProjectSort } from "../lib/projects";
 import { Button, Dialog, Input, Menu, MenuItem, MenuLabel } from "./ui";
 
-export function ProjectSwitcher({ projects, chats, pins, current, loaded, admin, select, add }: {
+export function ProjectSwitcher({ projects, chats, pins, current, loaded, admin, select, add, sort, setSort, showArchived, setShowArchived }: {
   projects: Project[]; chats: Chat[]; pins: string[]; current?: Project; loaded: boolean; admin: boolean;
   select: (id: string) => void; add: () => void;
+  sort: ProjectSort; setSort: (sort: ProjectSort) => void;
+  showArchived: boolean; setShowArchived: Dispatch<SetStateAction<boolean>>;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [showArchived, setShowArchived] = useState(false);
-  const [sort, setSort] = useState<ProjectSort>(() => {
-    const saved = localStorage.getItem("crabase.project-sort");
-    return saved === "name" || saved === "updated" ? saved : "created";
-  });
   useEffect(() => {
     const toggle = () => { setShowArchived(value => !value); setQuery(""); setOpen(true); };
     window.addEventListener("crabase:toggle-archived", toggle);
@@ -45,7 +42,7 @@ export function ProjectSwitcher({ projects, chats, pins, current, loaded, admin,
         <Menu label="Sort projects" icon={<MoreHorizontal size={16} />}>
           <MenuLabel>Sort by</MenuLabel>
           {([["updated", "Latest update"], ["name", "Name"], ["created", "Default (created)"]] as const).map(([value, label]) =>
-            <MenuItem key={value} selected={sort === value} onClick={() => { setSort(value); localStorage.setItem("crabase.project-sort", value); }}>{label}</MenuItem>)}
+            <MenuItem key={value} selected={sort === value} onClick={() => setSort(value)}>{label}</MenuItem>)}
         </Menu>
       </div>
       <div className="project-switcher-list" aria-label="Projects" aria-busy={!loaded}>

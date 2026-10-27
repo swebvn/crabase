@@ -300,6 +300,7 @@ small {
   justify-content: space-between;
   padding: 0 var(--space-1) var(--space-3);
 }
+.brand.text-button { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1); min-height: 40px; font-size: var(--type-section); font-weight: var(--weight-medium); letter-spacing: -0.5px; }
 .project-switcher.text-button { display: flex; align-items: center; gap: var(--space-2); min-width: 0; flex: 1; min-height: 40px; padding: var(--space-1); text-align: left; }
 .project-switcher > span { flex: 1; }
 .project-switcher svg { flex-shrink: 0; }
@@ -383,6 +384,12 @@ small {
   font-size: var(--type-meta);
   font-weight: var(--weight-medium);
 }
+.section-label > button:not(.icon-button) { display: inline-flex; align-items: center; gap: var(--space-1); padding: 0; text-align: left; }
+.section-actions { display: flex; }
+.section-actions .icon-button { opacity: 0; pointer-events: none; }
+.section-label:hover .section-actions .icon-button,
+.section-label:has(:focus-visible) .section-actions .icon-button,
+.section-label:has([aria-expanded="true"]) .section-actions .icon-button { opacity: 1; pointer-events: auto; }
 .menu { display: flex; position: relative; }
 .project-actions {
   opacity: 0;
@@ -502,6 +509,7 @@ small {
   padding-bottom: var(--space-2);
 }
 .worktree-group { min-width: 0; }
+.sidebar:not(.project-focused) .worktree-group { margin-left: var(--space-2); }
 .chat-row {
   position: relative;
   min-width: 0;
@@ -2268,6 +2276,7 @@ legend {
   }
 }
 @media (hover: none) {
+  .section-actions .icon-button,
   .sidebar .project-row .icon-button,
   .sidebar .chat-menu > .icon-button {
     width: 32px;

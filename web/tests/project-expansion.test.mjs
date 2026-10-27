@@ -6,16 +6,16 @@ test('project expansion restores saved states and tolerates invalid or unavailab
   const original = globalThis.localStorage;
   try {
     for (const [saved, expected] of [
-      [null, { collapsed: [] }],
-      ['{"collapsed":["project-a"],"projectsOpen":false}', { collapsed: ['project-a'] }],
-      ['{"collapsed":[42,"project-b"]}', { collapsed: ['project-b'] }],
-      ['broken json', { collapsed: [] }],
+      [null, { collapsed: [], projectsOpen: true }],
+      ['{"collapsed":["project-a"],"projectsOpen":false}', { collapsed: ['project-a'], projectsOpen: false }],
+      ['{"collapsed":[42,"project-b"]}', { collapsed: ['project-b'], projectsOpen: true }],
+      ['broken json', { collapsed: [], projectsOpen: true }],
     ]) {
       globalThis.localStorage = { getItem: () => saved };
       assert.deepEqual(readProjectExpansion(), expected);
     }
     globalThis.localStorage = { getItem: () => { throw new Error('blocked'); } };
-    assert.deepEqual(readProjectExpansion(), { collapsed: [] });
+    assert.deepEqual(readProjectExpansion(), { collapsed: [], projectsOpen: true });
   } finally {
     globalThis.localStorage = original;
   }
