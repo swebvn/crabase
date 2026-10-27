@@ -8,7 +8,7 @@ This document defines the intended design, not a claim that every rule is alread
 
 Inspired by [Vercel’s design.md](https://vercel.com/design.md), reviewed on September 8, 2026. That document primarily addresses Vercel-authored report websites. Crabase adopts its principles of hierarchy, alignment, typography, restraint, honest information, and accessible interaction.
 
-Crabase keeps its own identity, bundled Be Vietnam Pro, React/Vite stack, Lucide icons, and semantic CSS variables. Do not import Vercel branding, its report stylesheet, a report grid, or a new component library to follow these guidelines. The application’s controls and ongoing conversations determine its layout.
+Crabase keeps its own identity, bundled Inter, React/Vite stack, Lucide icons, and semantic CSS variables. Do not import Vercel branding, its report stylesheet, a report grid, or a new component library to follow these guidelines. The application’s controls and ongoing conversations determine its layout.
 
 ## Design priorities
 
@@ -38,7 +38,7 @@ Keep the existing warm neutral palette. Most hierarchy should come from position
 
 ### Typography
 
-Use bundled Be Vietnam Pro for application text. Use bundled DM Mono for terminal/tool output, code, commands, and paths, with system monospace fallbacks. Do not load a new font service.
+Use bundled Inter for application text. Use bundled DM Mono for terminal/tool output, code, commands, and paths, with system monospace fallbacks. Do not load a new font service.
 
 All font sizes use semantic `rem` tokens. At the browser’s default root size, **1rem = 16px**. Keep the root at `100%` so browser text-size preferences remain effective. Use the message token for 14px conversation text; do not add per-component pixel overrides.
 
@@ -66,8 +66,8 @@ Use a small spacing scale: **4, 8, 12, 16, 20, 24, 32px**. Each gap has one owne
 
 | Area                      | Target                                                   |
 | ------------------------- | -------------------------------------------------------- |
-| Sidebar                   | 8px horizontal and 12px top padding                      |
-| Navigation and chat rows  | 8px gap, approximately 36px minimum height               |
+| Sidebar                   | 12px horizontal and top padding                          |
+| Navigation and chat rows  | 8px gap, 40px minimum height; 44px on touch screens        |
 | Project chat list         | Full available width, no left rail or nested indentation |
 | Main content gutter       | 16–24px desktop; 12–16px narrow screens                  |
 | Heading to composer group | 24px                                                     |
@@ -88,6 +88,13 @@ Use 6–8px radii for rows and controls, 16–20px for the composer and dialogs,
 - Consolidate changes into the owning CSS rules; do not accumulate trailing overrides or hardcoded light-only colors.
 
 ## Component contracts
+
+### Settings
+
+- Keep profile and appearance separate from the Admin group: Users, Projects, and Health. Use the same navigation, section header, form, and table styles across these pages.
+- Users show identity, role, and account status with an explicit Edit action. Projects show their folder, visibility, and Sharing action. Keep status understandable without relying on color.
+- On small screens, reflow admin rows into stacked details with the action alongside. Keep search and forms full width; never shrink action labels or introduce page-level horizontal scrolling.
+- Health shows each service's result and detail, the last check time, and a Refresh or Retry action. Preserve the previous result while refreshing.
 
 ### Sidebar
 

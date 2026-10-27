@@ -307,7 +307,7 @@ Create accounts in Settings → Admin → Users. Use separate browser profiles t
 
 The composer loads the actual `model/list` catalog from the persistent Codex process over WebSocket. Choose a model and one of its supported reasoning levels. Choices are remembered per tab, validated on the backend, and saved with each queued job; changing the picker does not change an already queued turn. Each agent turn sends its selected `model` and `effort` to Codex. Notes do not invoke a model. The process starts when the first browser connects so the catalog is available before sending a prompt.
 
-The UI uses locally bundled DM Sans with 15px chat/composer text and larger supporting labels; fonts require no external font service.
+The UI uses locally bundled Inter, with 14px chat text and a 16px composer. Fonts require no external font service.
 
 ## Agent display name
 

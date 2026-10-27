@@ -14,7 +14,7 @@
     "test": "node --experimental-strip-types --test web/tests/*.test.mjs server/tests/terminal_host.mjs && python3 server/tests/migrations.py && php server/tests/auth.php && php server/tests/models.php && php server/tests/artifacts.php && php server/tests/attachments.php && php server/tests/folders.php && php server/tests/project_workspace.php && php server/tests/worktrees.php && php server/tests/agent_activity.php && php server/tests/parallel_chats.php && python3 server/tests/smoke.py"
   },
   "dependencies": {
-    "@fontsource/be-vietnam-pro": "^5.3.0",
+    "@fontsource-variable/inter": "^5.3.0",
     "@fontsource/dm-mono": "^5.3.0",
     "@fontsource/jetbrains-mono": "^5.3.0",
     "@lydell/node-pty": "^1.1.0",

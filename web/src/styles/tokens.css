@@ -3,7 +3,7 @@
   color-scheme: light;
   font-size: 100%; /* 1rem = 16px at the browser default; respects user text settings. */
   --font-sans:
-    "Be Vietnam Pro", -apple-system, BlinkMacSystemFont,
+    "Inter Variable", -apple-system, BlinkMacSystemFont,
     "Segoe UI", sans-serif;
   --font-mono: "DM Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --font-editor: "JetBrains Mono", var(--font-mono);
