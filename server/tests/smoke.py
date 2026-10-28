@@ -101,6 +101,12 @@ class Client:
 if __name__=='__main__':
     server = Path(__file__).resolve().parents[1]
     ensure_server(server)
+    with urllib.request.urlopen('http://127.0.0.1:8787/') as response:
+        html = response.read().decode()
+        assert response.status == 200 and '/assets/' in html
+    asset = next(line.split('src="', 1)[1].split('"', 1)[0] for line in html.splitlines() if 'src="/assets/' in line)
+    with urllib.request.urlopen('http://127.0.0.1:8787' + asset) as response:
+        assert response.status == 200 and response.headers.get_content_type() in {'application/javascript', 'text/javascript'}
     accounts = json.loads(subprocess.check_output(['php','tests/auth-fixture.php'],cwd=server))
     atexit.register(lambda: subprocess.run(['php','tests/auth-fixture.php','cleanup',*[a['id'] for a in accounts]],cwd=server,check=True))
     cookies = []

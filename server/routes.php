@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-use app\action\{Artifact, AuthLogin, AuthLogout, AuthSession, Avatar, Frontend, OAuthCallback, OAuthStart};
+use app\action\{Artifact, Asset, AuthLogin, AuthLogout, AuthSession, Avatar, Frontend, OAuthCallback, OAuthStart};
 use app\middleware\{BrowserRequest, CookieAuth, ProjectFileAccess};
 use Crab\Route;
 
@@ -16,6 +16,7 @@ Route::get('/auth/avatars/{name}', Avatar::class)
     ->middleware(CookieAuth::class, new BrowserRequest(false));
 Route::get('/files/{chatId}/{name}', Artifact::class)
     ->middleware(CookieAuth::class, ProjectFileAccess::class, new BrowserRequest(false));
+Route::get('/assets/{path:.+}', Asset::class);
 
 $frontend = Frontend::class;
 Route::get('/', $frontend);
