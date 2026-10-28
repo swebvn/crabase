@@ -2,8 +2,6 @@
 
 namespace app\model;
 
-use support\Model;
-
 final class Project extends Model
 {
     protected $table = 'projects';
@@ -12,9 +10,9 @@ final class Project extends Model
     protected $keyType = 'string';
     protected $fillable = ['id', 'name', 'path', 'archived', 'parent_id', 'visibility'];
 
-    public function members(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
+    public function members(): ModelCollection
     {
-        return $this->belongsToMany(User::class, 'project_members', 'project_id', 'user_id');
+        return User::query()->join('project_members', 'project_members.user_id', '=', 'users.id')->where('project_members.project_id', $this->id)->get();
     }
 
     public function workspacePath(): string
@@ -37,8 +35,8 @@ final class Project extends Model
         return $expected;
     }
 
-    public function chats(): \Illuminate\Database\Eloquent\Relations\HasMany
+    public function chats(): ModelQuery
     {
-        return $this->hasMany(Chat::class, 'project_id');
+        return Chat::query()->where('project_id', $this->id);
     }
 }

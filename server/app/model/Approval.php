@@ -2,16 +2,14 @@
 
 namespace app\model;
 
-use support\Model;
-
 final class Approval extends Model
 {
     protected $table = 'approvals';
     public $timestamps = false;
     protected $fillable = ['chat_id', 'rpc_id', 'method', 'details', 'decision'];
 
-    public function chat(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    public function chat(): ?Chat
     {
-        return $this->belongsTo(Chat::class, 'chat_id');
+        return Chat::find($this->chat_id);
     }
 }

@@ -8,11 +8,14 @@ final class ProjectAccess
 {
     public static function ids(array $actor): array
     {
-        if ($actor['admin']) return Project::query()->pluck('id')->all();
-        $roots = Project::query()->whereNull('parent_id')->where(function ($query) use ($actor) {
-            $query->where('visibility', 'public')->orWhereHas('members', fn($members) => $members->where('users.id', $actor['id']));
-        })->pluck('id')->all();
-        return Project::query()->whereIn('id', $roots)->orWhereIn('parent_id', $roots)->pluck('id')->all();
+        if ($actor['admin']) return Project::query()->pluck('id');
+        $public = Project::query()->whereNull('parent_id')->where('visibility', 'public')->pluck('id');
+        $member = Store::connection()->table('projects as p')->join('project_members as m', 'm.project_id', '=', 'p.id')
+            ->whereNull('p.parent_id')->where('m.user_id', $actor['id'])->pluck('p.id');
+        $roots = array_values(array_unique([...$public, ...$member]));
+        return Project::query()->where(function ($query) use ($roots) {
+            $query->whereIn('id', $roots)->orWhereIn('parent_id', $roots);
+        })->pluck('id');
     }
 
     public static function project(array $actor, string $id): void
@@ -54,12 +57,15 @@ final class ProjectAccess
             foreach ($members as $id) Store::text($id, 64);
             $members = array_values(array_unique($members));
             if (Account::query()->where('enabled', 1)->whereIn('user_id', $members)->count() !== count($members)) throw new InvalidArgumentException('Select enabled users only.');
-            \support\Db::transaction(function () use ($project, $visibility, $members) {
+            \app\service\Store::transaction(function () use ($project, $visibility, $members) {
                 $project->update(['visibility'=>$visibility]);
-                $project->members()->sync($visibility === 'private' ? $members : []);
+                Store::connection()->table('project_members')->where('project_id', $project->id)->delete();
+                if ($visibility === 'private' && $members !== []) {
+                    Store::connection()->table('project_members')->insertMany(array_map(fn(string $userId): array => ['project_id' => $project->id, 'user_id' => $userId], $members));
+                }
                 Store::notify();
             });
         }
-        return ['visibility'=>$project->visibility, 'members'=>$project->members()->pluck('users.id')->all()];
+        return ['visibility'=>$project->visibility, 'members'=>Store::connection()->table('project_members')->where('project_id', $project->id)->pluck('user_id')];
     }
 }

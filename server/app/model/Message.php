@@ -2,8 +2,6 @@
 
 namespace app\model;
 
-use support\Model;
-
 final class Message extends Model
 {
     protected $table = 'messages';
@@ -14,16 +12,16 @@ final class Message extends Model
     public static function appendBody(int $id, string $delta): void
     {
         // Keep streaming atomic: a read/modify/save cycle can lose concurrent deltas.
-        \app\service\Store::notify(\support\Db::update('UPDATE messages SET body=body || ? WHERE id=?', [$delta, $id]));
+        \app\service\Store::notify(\app\service\Store::connection()->execute('UPDATE messages SET body=body || ? WHERE id=?', [$delta, $id]));
     }
 
-    public function user(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    public function user(): ?User
     {
-        return $this->belongsTo(User::class, 'user_id');
+        return $this->user_id ? User::find($this->user_id) : null;
     }
 
-    public function chat(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    public function chat(): ?Chat
     {
-        return $this->belongsTo(Chat::class, 'chat_id');
+        return Chat::find($this->chat_id);
     }
 }

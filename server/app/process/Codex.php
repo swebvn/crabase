@@ -164,7 +164,7 @@ final class Codex
                 $thread = $chatId ? Store::threadPage($chatId, $before, $after, $limit) : null;
                 $resultThread = $thread;
                 $state = ProjectAccess::snapshot(Store::snapshot(), $actor);
-                $state['pins'] = \app\model\User::findOrFail($actor['id'])->pinnedProjects()->whereIn('projects.id', array_column($state['projects'], 'id'))->pluck('projects.id')->all();
+                $state['pins'] = Store::connection()->table('project_pins')->where('user_id', $actor['id'])->whereIn('project_id', array_column($state['projects'], 'id'))->pluck('project_id');
                 $previous = $this->clients[$connection->id]['chat_id'];
                 if ($previous !== $chatId) $presence = [$previous, $chatId];
                 $this->clients[$connection->id] = ['token'=>$this->clients[$connection->id]['token'], 'chat_id' => $chatId,'state' => $state,'thread' => $thread,
@@ -183,7 +183,7 @@ final class Codex
             } else {
                 $m['data']['user_id'] = $actor['id'];
                 if ($m['action'] === 'projectDelete') {
-                    $chatIds = Chat::query()->where('project_id', Store::text($m['data']['project_id'] ?? null, 64))->pluck('id')->all();
+                    $chatIds = Chat::query()->where('project_id', Store::text($m['data']['project_id'] ?? null, 64))->pluck('id');
                     foreach ($this->terminals as $terminal) {
                         if ($terminal['running'] && in_array($terminal['chat_id'], $chatIds, true)) throw new \InvalidArgumentException('Close this workspace’s terminals before deleting it.');
                     }
@@ -234,7 +234,7 @@ final class Codex
                 continue;
             }
             $state = ProjectAccess::snapshot($snapshot, $actor);
-            $state['pins'] = \app\model\User::findOrFail($actor['id'])->pinnedProjects()->whereIn('projects.id', array_column($state['projects'], 'id'))->pluck('projects.id')->all();
+            $state['pins'] = Store::connection()->table('project_pins')->where('user_id', $actor['id'])->whereIn('project_id', array_column($state['projects'], 'id'))->pluck('project_id');
             $patch = ['type' => 'patch'];
             foreach ($state as $key => $value) {
                 if ($value !== $client['state'][$key]) {
@@ -421,8 +421,10 @@ final class Codex
             }
             $this->steerActiveJobs();
             Store::notify(Job::query()->where('status', 'queued')->where('cancel', 1)->update(['status'=>'cancelled']));
-            Store::notify(Chat::query()->where('status', 'queued')
-                ->whereDoesntHave('jobs', fn ($query) => $query->whereIn('status', ['queued','running']))->update(['status'=>'idle']));
+            $active = Store::connection()->table('jobs')->selectRaw('1')
+                ->whereColumn('jobs.chat_id', 'chats.id')->whereIn('jobs.status', ['queued', 'running']);
+            Store::notify(Chat::query()->from('chats')->where('status', 'queued')
+                ->whereNotExists($active)->update(['status'=>'idle']));
             $limit = (require dirname(__DIR__, 2).'/config/crabase.php')['parallel_chats'];
             if (count($this->jobs) >= $limit) {
                 return;

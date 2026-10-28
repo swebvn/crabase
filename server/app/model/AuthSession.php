@@ -1,7 +1,7 @@
 <?php
 namespace app\model;
 
-final class AuthSession extends \support\Model
+final class AuthSession extends Model
 {
     protected $table = 'auth_sessions';
     protected $primaryKey = 'token_hash';

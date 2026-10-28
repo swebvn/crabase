@@ -1,7 +1,7 @@
 <?php
 namespace app\model;
 
-final class Account extends \support\Model
+final class Account extends Model
 {
     protected $table = 'accounts';
     protected $primaryKey = 'user_id';

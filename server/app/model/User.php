@@ -2,8 +2,6 @@
 
 namespace app\model;
 
-use support\Model;
-
 final class User extends Model
 {
     protected $table = 'users';
@@ -12,13 +10,13 @@ final class User extends Model
     protected $keyType = 'string';
     protected $fillable = ['id', 'name', 'avatar_url', 'created_at'];
 
-    public function pinnedProjects(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
+    public function pinnedProjects(): ModelCollection
     {
-        return $this->belongsToMany(Project::class, 'project_pins', 'user_id', 'project_id');
+        return Project::query()->join('project_pins', 'project_pins.project_id', '=', 'projects.id')->where('project_pins.user_id', $this->id)->get();
     }
 
-    public function messages(): \Illuminate\Database\Eloquent\Relations\HasMany
+    public function messages(): ModelQuery
     {
-        return $this->hasMany(Message::class, 'user_id');
+        return Message::query()->where('user_id', $this->id);
     }
 }

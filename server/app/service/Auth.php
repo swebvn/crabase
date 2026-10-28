@@ -68,15 +68,15 @@ final class Auth
         $email = strtolower(trim(is_string($data['email'] ?? null) ? $data['email'] : ''));
         $password = $data['password'] ?? '';
         $key = hash('sha256', $ip);
-        \support\Db::table('login_attempts')->where('expires', '<', time())->delete();
-        $attempt = \support\Db::table('login_attempts')->where('key', $key)->value('attempts') ?? 0;
+        \app\service\Store::connection()->table('login_attempts')->where('expires', '<', time())->delete();
+        $attempt = \app\service\Store::connection()->table('login_attempts')->where('key', $key)->value('attempts') ?? 0;
         if ($attempt >= 10) throw new InvalidArgumentException('Too many attempts. Try again in 15 minutes.');
         // Atomic increment preserves attempts from concurrent HTTP workers.
-        \support\Db::statement('INSERT INTO login_attempts VALUES (?,1,?) ON CONFLICT(key) DO UPDATE SET attempts=attempts+1', [$key, time()+900]);
+        \app\service\Store::connection()->execute('INSERT INTO login_attempts VALUES (?,1,?) ON CONFLICT(key) DO UPDATE SET attempts=attempts+1', [$key, time()+900]);
         $account = Account::query()->where('email', substr($email, 0, 254))->first();
         $valid = is_string($password) && strlen($password) <= 72 && password_verify($password, $account['password_hash'] ?? '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2uheWG/igi.');
         if (!$valid || !$account || !$account['enabled']) throw new InvalidArgumentException('Invalid email or password.');
-        \support\Db::table('login_attempts')->where('key', $key)->delete();
+        \app\service\Store::connection()->table('login_attempts')->where('key', $key)->delete();
         return self::session($account['user_id']);
     }
     public static function session(string $id): string
@@ -105,7 +105,7 @@ final class Auth
         $name = self::name($data['name'] ?? null);
         $email = self::email($data['email'] ?? null);
         $hash = self::password($data['password'] ?? null);
-        return \support\Db::transaction(function () use ($data, $bootstrap, $name, $email, $hash) {
+        return \app\service\Store::transaction(function () use ($data, $bootstrap, $name, $email, $hash) {
             if ($bootstrap && Account::query()->where('admin', 1)->where('enabled', 1)->exists()) throw new InvalidArgumentException('An admin already exists. Use Settings to manage users.');
             if (Account::query()->where('email', $email)->exists() || User::query()->where('name', $name)->exists()) throw new InvalidArgumentException('Name or email is already in use.');
             $id = bin2hex(random_bytes(8));
@@ -134,7 +134,7 @@ final class Auth
         $gitEmail = $admin ? $account['git_email'] : (empty($data['git_email']) ? '' : self::email($data['git_email']));
         $role = $admin ? (empty($data['admin']) ? 0 : 1) : $account['admin'];
         $enabled = $admin ? (empty($data['enabled']) ? 0 : 1) : $account['enabled'];
-        return \support\Db::transaction(function () use ($id,$name,$email,$hash,$gitName,$gitEmail,$role,$enabled,$newPassword) {
+        return \app\service\Store::transaction(function () use ($id,$name,$email,$hash,$gitName,$gitEmail,$role,$enabled,$newPassword) {
             if (User::query()->where('name', $name)->where('id', '<>', $id)->exists() || Account::query()->where('email', $email)->where('user_id', '<>', $id)->exists()) throw new InvalidArgumentException('Name or email is already in use.');
             if ((!$role || !$enabled) && !Account::query()->where('admin', 1)->where('enabled', 1)->where('user_id', '<>', $id)->exists()) throw new InvalidArgumentException('Keep at least one enabled administrator.');
             User::query()->whereKey($id)->update(['name'=>$name]);

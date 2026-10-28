@@ -93,8 +93,11 @@ final class Actions
         if (!is_bool($data['pinned'] ?? null)) throw new InvalidArgumentException('Pinned must be a boolean.');
         $user = User::query()->find(Store::text($data['user_id'] ?? null, 64)) ?? throw new InvalidArgumentException('User not found.');
         if (!Project::query()->whereKey($id)->exists()) throw new InvalidArgumentException('Project not found.');
-        if ($data['pinned']) $user->pinnedProjects()->syncWithoutDetaching([$id]);
-        else $user->pinnedProjects()->detach($id);
+        if ($data['pinned']) {
+            Store::connection()->table('project_pins')->upsert([['user_id' => $user->id, 'project_id' => $id]], ['user_id', 'project_id'], []);
+        } else {
+            Store::connection()->table('project_pins')->where('user_id', $user->id)->where('project_id', $id)->delete();
+        }
         return ['ok' => true];
     }
 
@@ -112,19 +115,18 @@ final class Actions
             return ['ok' => true];
         }
         if (Project::query()->where('parent_id', $id)->exists()) throw new InvalidArgumentException('Delete this project’s worktrees first.');
-        $chats = Chat::query()->where('project_id', $id);
-        $ids = $chats->pluck('id');
-        if ((clone $chats)->where('status', '!=', 'idle')->exists() ||
+        $ids = Chat::query()->where('project_id', $id)->pluck('id');
+        if (Chat::query()->where('project_id', $id)->where('status', '!=', 'idle')->exists() ||
             Job::query()->whereIn('chat_id', $ids)->whereIn('status', ['queued', 'running'])->exists()) {
             throw new InvalidArgumentException('Stop active work in this project before deleting it.');
         }
         // Finish Git removal before opening a short database transaction. Never delete the original project folder.
         if ($project->parent_id && !Worktrees::remove($project, $force)) return ['requires_confirmation' => true];
-        \support\Db::transaction(function () use ($project, $chats, $ids) {
+        \app\service\Store::transaction(function () use ($project, $ids) {
             foreach ([Approval::class, Job::class, Message::class, Event::class] as $model) {
                 $model::query()->whereIn('chat_id', $ids)->delete();
             }
-            $chats->delete();
+            Chat::query()->whereIn('id', $ids)->delete();
             $project->delete();
         });
         return ['ok' => true];
@@ -175,7 +177,7 @@ final class Actions
         }
         $options = $mode === 'agent' ? self::agentOptions($data) : ['model' => null,'effort' => null];
         $attachments = Attachments::move($pending, $id);
-        try { \support\Db::transaction(function () use ($chat, $id, $body, $user, $author, $mode, $options, $attachments) {
+        try { \app\service\Store::transaction(function () use ($chat, $id, $body, $user, $author, $mode, $options, $attachments) {
             $message = Message::query()->create([
                 'chat_id' => $id, 'role' => $mode === 'note' ? 'note' : 'user',
                 'author' => $author, 'body' => $body, 'created_at' => gmdate('c'), 'user_id' => $user->id,

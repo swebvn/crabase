@@ -2,8 +2,6 @@
 
 namespace app\model;
 
-use support\Model;
-
 final class Chat extends Model
 {
     protected $table = 'chats';
@@ -12,18 +10,18 @@ final class Chat extends Model
     protected $keyType = 'string';
     protected $fillable = ['id', 'project_id', 'title', 'status', 'archived', 'thread_id', 'created_at', 'updated_at'];
 
-    public function project(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    public function project(): ?Project
     {
-        return $this->belongsTo(Project::class, 'project_id');
+        return $this->project_id ? Project::find($this->project_id) : null;
     }
 
-    public function messages(): \Illuminate\Database\Eloquent\Relations\HasMany
+    public function messages(): ModelQuery
     {
-        return $this->hasMany(Message::class, 'chat_id');
+        return Message::query()->where('chat_id', $this->id);
     }
 
-    public function jobs(): \Illuminate\Database\Eloquent\Relations\HasMany
+    public function jobs(): ModelQuery
     {
-        return $this->hasMany(Job::class, 'chat_id');
+        return Job::query()->where('chat_id', $this->id);
     }
 }

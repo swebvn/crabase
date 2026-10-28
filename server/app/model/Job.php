@@ -2,8 +2,6 @@
 
 namespace app\model;
 
-use support\Model;
-
 final class Job extends Model
 {
     protected $table = 'jobs';
@@ -12,18 +10,20 @@ final class Job extends Model
 
     public static function nextQueued(int $limit): array
     {
-        return self::query()->from('jobs as j')->select('j.*', 'c.thread_id', 'p.path')
+        $db = \app\service\Store::connection();
+        $active = $db->table('jobs as active')->selectRaw('1')
+            ->whereColumn('active.chat_id', 'j.chat_id')->where('active.status', 'running');
+        $earlier = $db->table('jobs as earlier')->selectRaw('1')
+            ->whereColumn('earlier.chat_id', 'j.chat_id')->where('earlier.status', 'queued')
+            ->where('earlier.cancel', 0)->whereColumn('earlier.id', '<', 'j.id');
+        return $db->table('jobs as j')->select('j.*', 'c.thread_id', 'p.path')
             ->join('chats as c', 'c.id', '=', 'j.chat_id')->leftJoin('projects as p', 'p.id', '=', 'c.project_id')
-            ->where('j.status', 'queued')->where('j.cancel', 0)
-            ->whereNotExists(fn ($query) => $query->selectRaw('1')->from('jobs as active')
-                ->whereColumn('active.chat_id', 'j.chat_id')->where('active.status', 'running'))
-            ->whereNotExists(fn ($query) => $query->selectRaw('1')->from('jobs as earlier')
-                ->whereColumn('earlier.chat_id', 'j.chat_id')->where('earlier.status', 'queued')->where('earlier.cancel', 0)->whereColumn('earlier.id', '<', 'j.id'))
-            ->orderBy('j.id')->limit($limit)->get()->toArray();
+            ->where('j.status', 'queued')->where('j.cancel', 0)->whereNotExists($active)->whereNotExists($earlier)
+            ->orderBy('j.id')->limit($limit)->get();
     }
 
-    public function chat(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    public function chat(): ?Chat
     {
-        return $this->belongsTo(Chat::class, 'chat_id');
+        return Chat::find($this->chat_id);
     }
 }

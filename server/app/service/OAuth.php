@@ -89,7 +89,7 @@ final class OAuth
         }
         $email = $profile['email'] ?? null;
         if (!is_string($email) || !filter_var($email,FILTER_VALIDATE_EMAIL)) throw new InvalidArgumentException('A valid email is required to link your account. Use password login or contact your administrator.');
-        return \support\Db::transaction(function () use ($email,$subject,$profile) {
+        return \app\service\Store::transaction(function () use ($email,$subject,$profile) {
             $account = Account::query()->where('email', strtolower(trim($email)))->first(['user_id','enabled']);
             if ($account && !$account->enabled) throw new InvalidArgumentException('Your account is disabled. Contact your administrator.');
             if (!$account) {

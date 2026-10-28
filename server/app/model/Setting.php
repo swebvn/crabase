@@ -2,8 +2,6 @@
 
 namespace app\model;
 
-use support\Model;
-
 final class Setting extends Model
 {
     protected $table = 'settings';

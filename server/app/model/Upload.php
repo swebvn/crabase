@@ -1,7 +1,7 @@
 <?php
 namespace app\model;
 
-final class Upload extends \support\Model
+final class Upload extends Model
 {
     protected $table = 'uploads';
     public $timestamps = false;

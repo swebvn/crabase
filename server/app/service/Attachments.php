@@ -43,7 +43,7 @@ final class Attachments
             $size = $data['size'] ?? null;
             if (!is_int($size) || $size < 1 || $size > self::MAX_SIZE) throw new \InvalidArgumentException('Files must be between 1 byte and 5 MB.');
             $id = bin2hex(random_bytes(16));
-            \support\Db::transaction(function () use ($id, $user, $name, $size) {
+            \app\service\Store::transaction(function () use ($id, $user, $name, $size) {
                 if (Upload::query()->where('user_id', $user)->count() >= 30) throw new \InvalidArgumentException('Too many pending uploads. Remove unused attachments or wait for them to expire.');
                 Upload::query()->create(['id'=>$id, 'user_id'=>$user, 'name'=>$name, 'size'=>$size, 'expires'=>time()+86400]);
             });
@@ -108,7 +108,7 @@ final class Attachments
         if (file_exists($target) || !rename($source, $target)) throw new \RuntimeException('Could not save avatar.');
         $url = '/auth/avatars/'.$name;
         try {
-            \support\Db::transaction(function () use ($user, $file, $url) {
+            \app\service\Store::transaction(function () use ($user, $file, $url) {
                 if (!\app\model\User::query()->whereKey($user)->update(['avatar_url'=>$url])) throw new \InvalidArgumentException('User not found.');
                 Upload::query()->whereKey($file['id'])->delete();
                 Store::notify();
