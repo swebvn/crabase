@@ -20,7 +20,19 @@ final class Asset
             return Response::text('Not found', 404);
         }
 
-        return Response::download($file, basename($file), mime_content_type($file) ?: 'application/octet-stream')
+        $types = [
+            'css' => 'text/css',
+            'js' => 'application/javascript',
+            'json' => 'application/json',
+            'map' => 'application/json',
+            'wasm' => 'application/wasm',
+            'woff' => 'font/woff',
+            'woff2' => 'font/woff2',
+        ];
+        $extension = strtolower(pathinfo($file, PATHINFO_EXTENSION));
+        $type = $types[$extension] ?? mime_content_type($file) ?: 'application/octet-stream';
+
+        return Response::download($file, basename($file), $type)
             ->withHeader('Content-Disposition', 'inline; filename*=UTF-8\'\'' . rawurlencode(basename($file)))
             ->withHeader('Cache-Control', 'public, max-age=31536000, immutable')
             ->withHeader('X-Content-Type-Options', 'nosniff');

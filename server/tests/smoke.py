@@ -107,6 +107,9 @@ if __name__=='__main__':
     asset = next(line.split('src="', 1)[1].split('"', 1)[0] for line in html.splitlines() if 'src="/assets/' in line)
     with urllib.request.urlopen('http://127.0.0.1:8787' + asset) as response:
         assert response.status == 200 and response.headers.get_content_type() in {'application/javascript', 'text/javascript'}
+    stylesheet = next(line.split('href="', 1)[1].split('"', 1)[0] for line in html.splitlines() if 'href="/assets/' in line and '.css"' in line)
+    with urllib.request.urlopen('http://127.0.0.1:8787' + stylesheet) as response:
+        assert response.status == 200 and response.headers.get_content_type() == 'text/css'
     accounts = json.loads(subprocess.check_output(['php','tests/auth-fixture.php'],cwd=server))
     atexit.register(lambda: subprocess.run(['php','tests/auth-fixture.php','cleanup',*[a['id'] for a in accounts]],cwd=server,check=True))
     cookies = []
