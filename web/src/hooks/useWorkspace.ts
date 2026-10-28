@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Snapshot, Message, Approval, Artifact, TerminalSession } from "../types";
+import type { Snapshot, Message, Approval, Artifact, Presence, TerminalSession } from "../types";
 import { applyMessagePatch } from "../lib/messages";
 import { appendTerminalOutput } from "../lib/terminal";
 const empty: Snapshot = {
@@ -12,6 +12,7 @@ const empty: Snapshot = {
   events: [],
   runtime: "offline",
 };
+const noPresence: Presence = { viewers: [], typing: [] };
 export function useWorkspace(selected: string) {
   const [data, setData] = useState<Snapshot>(empty);
   const [loaded, setLoaded] = useState(false);
@@ -19,6 +20,7 @@ export function useWorkspace(selected: string) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [approvals, setApprovals] = useState<Approval[]>([]);
+  const [presence, setPresence] = useState<Presence>(noPresence);
   const [terminals, setTerminals] = useState<TerminalSession[]>([]);
   const [terminalChatId, setTerminalChatId] = useState("");
   const [error, setError] = useState("");
@@ -152,6 +154,10 @@ export function useWorkspace(selected: string) {
           if (packet.event === "error") setError(packet.message || "Terminal stopped.");
           return;
         }
+        if (packet.type === "presence") {
+          if (packet.chat_id === selectedRef.current) setPresence({ viewers: packet.viewers, typing: packet.typing });
+          return;
+        }
         if (packet.type !== "patch") return;
         if (packet.access_revoked) {
           setMessages([]); setArtifacts([]); setApprovals([]); setTerminals([]);
@@ -210,6 +216,7 @@ export function useWorkspace(selected: string) {
     setTerminals(cached?.terminals || []);
     setHasMoreMessages(cached?.hasMore || false);
     setLoaded(!!cached);
+    setPresence(noPresence);
     if (!live) return;
     const id = selected;
     const latestCachedId = cached?.messages.at(-1)?.id;
@@ -291,6 +298,7 @@ export function useWorkspace(selected: string) {
     messages,
     approvals,
     artifacts,
+    presence,
     terminals,
     terminalChatId,
     hasMoreMessages,

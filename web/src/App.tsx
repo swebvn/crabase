@@ -362,6 +362,8 @@ export function App() {
         request,
         send,
       }}
+      typing={workspace.presence.typing.filter((user) => user !== preferences.name)}
+      workingFor={chat?.running_by && chat.running_by !== preferences.name ? chat.running_by : undefined}
       dismissError={() => setError("")}
       cancel={() => void act("cancel", { chat_id: selected })}
       restore={() => void archive()}
@@ -445,6 +447,7 @@ export function App() {
       <main className="main-panel" id="main-content" tabIndex={-1}>
         <Header
           {...{ chat, project, sidebarHidden }}
+          viewers={workspace.presence.viewers.filter((user) => user !== preferences.name)}
           avatars={preferences.avatars}
           showSidebar={() => {
             setSidebar(true);

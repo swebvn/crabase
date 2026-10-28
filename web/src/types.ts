@@ -16,7 +16,9 @@ export type Chat = {
   updated_at: string;
   project_name: string | null;
   participants?: string[];
+  running_by?: string | null;
 };
+export type Presence = { viewers: string[]; typing: string[] };
 export type Message = {
   id: number;
   role: string;

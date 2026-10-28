@@ -62,6 +62,16 @@ final class Codex
                     $this->worker->connections[$id]->close();
                 }
             }
+            // Typing ends without a final packet when a tab closes or sleeps, so expire it here.
+            $expired = [];
+            foreach ($this->clients as &$client) {
+                if ($client['typing'] && $client['typing'] <= microtime(true)) {
+                    $client['typing'] = 0.0;
+                    $expired[$client['chat_id']] = true;
+                }
+            }
+            unset($client);
+            foreach (array_keys($expired) as $chatId) $this->presence((string)$chatId);
         });
     }
 
@@ -80,7 +90,23 @@ final class Codex
         }
         $connection->maxSendBufferSize = 8 * 1024 * 1024;
         $connection->onBufferFull = fn () => $connection->close();
-        $this->clients[$connection->id] = ['token'=>$token, 'chat_id' => null,'state' => null,'thread' => null];
+        $this->clients[$connection->id] = ['token'=>$token, 'chat_id' => null,'state' => null,'thread' => null,'user' => '','typing' => 0.0];
+    }
+
+    // Presence is live connection state only: who has a chat open and who is typing. Nothing is stored.
+    private function presence(?string $chatId): void
+    {
+        if (!$chatId) return;
+        $viewers = $typing = [];
+        foreach ($this->clients as $client) {
+            if ($client['chat_id'] !== $chatId) continue;
+            $viewers[] = $client['user'];
+            if ($client['typing'] > microtime(true)) $typing[] = $client['user'];
+        }
+        $packet = ['type'=>'presence', 'chat_id'=>$chatId, 'viewers'=>array_values(array_unique($viewers)), 'typing'=>array_values(array_unique($typing))];
+        foreach ($this->clients as $id => $client) {
+            if ($client['chat_id'] === $chatId && isset($this->worker->connections[$id])) $this->reply($this->worker->connections[$id], $packet);
+        }
     }
 
     private function reply(TcpConnection $connection, array $message): void
@@ -89,7 +115,9 @@ final class Codex
     }
     public function onClose(TcpConnection $connection): void
     {
+        $chatId = $this->clients[$connection->id]['chat_id'] ?? null;
         unset($this->clients[$connection->id]);
+        $this->presence($chatId);
     }
     public function onMessage(TcpConnection $connection, string $data): void
     {
@@ -113,6 +141,7 @@ final class Codex
                 throw new \InvalidArgumentException('Expected id, action, and data.');
             }
             $id = $m['id'];
+            $presence = [];
             if (!empty($m['data']['project_id'])) ProjectAccess::project($actor, Store::text($m['data']['project_id'], 64));
             if (!empty($m['data']['chat_id'])) ProjectAccess::chat($actor, Store::text($m['data']['chat_id'], 64));
             if ($m['action'] === 'models') {
@@ -136,8 +165,19 @@ final class Codex
                 $resultThread = $thread;
                 $state = ProjectAccess::snapshot(Store::snapshot(), $actor);
                 $state['pins'] = \app\model\User::findOrFail($actor['id'])->pinnedProjects()->whereIn('projects.id', array_column($state['projects'], 'id'))->pluck('projects.id')->all();
-                $this->clients[$connection->id] = ['token'=>$this->clients[$connection->id]['token'], 'chat_id' => $chatId,'state' => $state,'thread' => $thread];
+                $previous = $this->clients[$connection->id]['chat_id'];
+                if ($previous !== $chatId) $presence = [$previous, $chatId];
+                $this->clients[$connection->id] = ['token'=>$this->clients[$connection->id]['token'], 'chat_id' => $chatId,'state' => $state,'thread' => $thread,
+                    'user' => $actor['name'], 'typing' => $previous === $chatId ? $this->clients[$connection->id]['typing'] : 0.0];
                 $result = ['state' => $state,'thread' => $resultThread,'terminals' => $this->terminalList($chatId)];
+            } elseif ($m['action'] === 'typing') {
+                $chatId = $this->clients[$connection->id]['chat_id'];
+                if (!is_bool($m['data']['active'] ?? null)) throw new \InvalidArgumentException('Active must be a boolean.');
+                if (!$chatId || ($m['data']['chat_id'] ?? null) !== $chatId) throw new \InvalidArgumentException('Open this chat before typing in it.');
+                $was = $this->clients[$connection->id]['typing'] > microtime(true);
+                $this->clients[$connection->id]['typing'] = $m['data']['active'] ? microtime(true) + 6 : 0.0;
+                if ($was !== $m['data']['active']) $presence = [$chatId];
+                $result = ['ok' => true];
             } elseif (str_starts_with($m['action'], 'terminal')) {
                 $result = $this->terminalAction($connection, $m['action'], $m['data']);
             } else {
@@ -163,6 +203,7 @@ final class Codex
                 };
             }
             $this->reply($connection, ['id' => $id,'result' => $result]);
+            foreach ($presence as $chatId) $this->presence($chatId);
             $this->publish();
         } catch (\InvalidArgumentException|\JsonException $e) {
             $this->reply($connection, ['id' => $id,'error' => $e->getMessage()]);
@@ -180,7 +221,7 @@ final class Codex
         }
         $this->revision = $revision;
         $snapshot = Store::snapshot();
-        $threads = [];
+        $threads = $revoked = [];
         foreach ($this->clients as $id => &$client) {
             if (!$actor = Auth::user($client['token'])) {
                 if (isset($this->worker->connections[$id])) {
@@ -202,8 +243,10 @@ final class Codex
             }
             $client['state'] = $state;
             if ($client['chat_id'] && !in_array($client['chat_id'], array_column($state['chats'], 'id'), true)) {
+                $revoked[] = $client['chat_id'];
                 $client['chat_id'] = null;
                 $client['thread'] = null;
+                $client['typing'] = 0.0;
                 $patch['access_revoked'] = true;
             }
             if ($chatId = $client['chat_id']) {
@@ -236,6 +279,7 @@ final class Codex
             }
         }
         unset($client);
+        foreach (array_unique($revoked) as $chatId) $this->presence($chatId);
     }
 
     private function health(): array

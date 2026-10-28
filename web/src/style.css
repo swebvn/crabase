@@ -1164,6 +1164,28 @@ small {
   margin: 0 auto;
   padding: var(--space-3) var(--space-6) var(--space-4);
 }
+/* Always present in open chats so typing and steering notices never move the conversation. */
+.in-chat:has(.composer-status) {
+  padding-top: var(--space-1);
+}
+.composer-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--space-3);
+  min-height: 1rem;
+  margin: 0 0 var(--space-1);
+  padding: 0 var(--space-4);
+  color: var(--muted);
+  font-size: var(--type-meta);
+  line-height: 1rem;
+}
+.chat-viewers {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: var(--space-1);
+  color: var(--muted);
+}
 .error-notice,
 .connection-notice {
   border-radius: var(--radius-small);

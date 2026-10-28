@@ -22,6 +22,11 @@ export type SendOptions = {
   effort?: string | null;
   attachments?: string[];
 };
+function typingLabel(names: string[]) {
+  if (names.length === 1) return `${names[0]} is typing…`;
+  if (names.length === 2) return `${names[0]} and ${names[1]} are typing…`;
+  return `${names.length} people are typing…`;
+}
 export function Composer({
   chat,
   project,
@@ -37,6 +42,8 @@ export function Composer({
   send,
   cancel,
   restore,
+  typing,
+  workingFor,
 }: {
   chat?: Chat;
   project?: Project;
@@ -52,11 +59,23 @@ export function Composer({
   send: (options: SendOptions) => Promise<boolean>;
   cancel: () => void;
   restore: () => void;
+  typing: string[];
+  workingFor?: string;
 }) {
   const textarea = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
   const attachments = useAttachments(request, draftVersion, chat?.id || project?.id || '');
   const [dragging, setDragging] = useState(false);
+  const typingSent = useRef(0);
+  useEffect(() => {
+    typingSent.current = 0;
+  }, [chat?.id, live]);
+  // The server expires typing after 6 seconds, so refresh it while the draft keeps changing.
+  function reportTyping(active: boolean) {
+    if (!chat || !live || (active ? Date.now() - typingSent.current < 3000 : !typingSent.current)) return;
+    typingSent.current = active ? Date.now() : 0;
+    void request("typing", { chat_id: chat.id, active }).catch(() => {});
+  }
   const [draft, setDraft] = useState(() => draftRef.current);
   useEffect(() => setDraft(draftRef.current), [draftRef, draftVersion]);
   const [model, setModel] = useState(
@@ -168,7 +187,7 @@ export function Composer({
       mode === "note"
         ? { mode, attachments: attachments.ids() }
         : { mode, model: chosen.model, effort: reasoning || null, attachments: attachments.ids() },
-    ).then((sent) => { if (sent) attachments.clear(); textarea.current?.focus(); });
+    ).then((sent) => { if (sent) { attachments.clear(); reportTyping(false); } textarea.current?.focus(); });
   }
   function updateFileMention(value: string, caret: number | null) {
     if (!project || !live || caret === null) {
@@ -222,6 +241,12 @@ export function Composer({
           </span>
         </div>
       )}
+      {chat && !chat.archived && (
+        <p className="composer-status">
+          {workingFor && <span role="status">{data.agentName} is working on {workingFor}’s request. A message sent now steers that work.</span>}
+          {typing.length > 0 && <span>{typingLabel(typing)}</span>}
+        </p>
+      )}
       {chat?.archived ? (
         <div className="archived-notice">
           <span>This chat is archived.</span>
@@ -251,6 +276,7 @@ export function Composer({
             onChange={(event) => {
               draftRef.current = event.target.value;
               setDraft(event.target.value);
+              reportTyping(!!event.target.value.trim());
               updateFileMention(event.target.value, event.target.selectionStart);
             }}
             onClick={(event) => updateFileMention(event.currentTarget.value, event.currentTarget.selectionStart)}

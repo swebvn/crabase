@@ -119,6 +119,12 @@ Use 6–8px radii for rows and controls, 16–20px for the composer and dialogs,
 - Row actions appear on hover or keyboard focus. Project actions overlay the end of the label so the name never re-truncates; on devices without hover they are always visible and sit beside the label.
 - Shortcut hints name the platform modifier (⌘ on Apple devices, Ctrl elsewhere). New chat is ⌘/Ctrl+Shift+O, because browsers reserve ⌘/Ctrl+N; N still works where the browser passes it through.
 
+### Presence
+
+- The chat header shows an eye icon and avatar stack for other people who have the chat open right now, separate from the participant stack. Hide it when nobody else is viewing.
+- A reserved status line above the composer shows who is typing and, when the agent is running someone else's request, that a message sent now steers that work. The line keeps its height so the conversation never jumps.
+- Presence is live connection state sent as `presence` WebSocket packets; it is not stored and never includes the viewer themself.
+
 ### Identity and avatars
 
 - Resolve an avatar from the message author or participant identity, never from the currently selected viewer.
@@ -133,7 +139,7 @@ Use 6–8px radii for rows and controls, 16–20px for the composer and dialogs,
 
 - The send arrow is the single primary action. Enter sends to the agent; Shift+Enter inserts a line break. Preserve IME composition behavior.
 - A secondary note icon beside send saves a note without invoking the agent. No duplicate Crab send button or separate mode trigger.
-- While work can be cancelled, Stop replaces the send arrow in the same primary-action position. Never show Stop and Send together. Enter still sends another agent message while work is active, allowing sequential queued messages; the Stop button cancels active and queued requests.
+- While work can be cancelled, Stop replaces the send arrow in the same primary-action position. Never show Stop and Send together. Enter still sends another agent message while work is active; it steers the running turn, or queues if it cannot be delivered yet; the Stop button cancels active and queued requests.
 - Keep model and reasoning selectors compact, readable, and keyboard accessible. Use real backend model capabilities.
 - Preserve drafts on failure. Explain errors near the composer with a useful recovery action.
 - For a new project chat, show a shallow, quiet bar immediately above the input with the project name. Standalone chats have no project bar.

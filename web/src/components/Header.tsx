@@ -1,4 +1,4 @@
-import { Copy, FileCode2, MoreHorizontal, PanelLeft, PanelRight, SquareTerminal } from "lucide-react";
+import { Copy, Eye, FileCode2, MoreHorizontal, PanelLeft, PanelRight, SquareTerminal } from "lucide-react";
 import type { Avatars, Chat, Project } from "../types";
 import { IconButton, Menu, MenuItem } from "./ui";
 import { AvatarStack } from "./Avatar";
@@ -15,6 +15,7 @@ export function Header({
   terminalOpen,
   copy,
   avatars,
+  viewers,
 }: {
   chat?: Chat;
   project?: Project;
@@ -28,6 +29,7 @@ export function Header({
   terminalOpen: boolean;
   copy: () => void;
   avatars: Avatars;
+  viewers: string[];
 }) {
   return (
     <header className="topbar">
@@ -49,6 +51,12 @@ export function Header({
           {chat?.title || "New chat"}
         </span>
         {chat && <AvatarStack users={chat.participants} avatars={avatars} />}
+        {chat && viewers.length > 0 && (
+          <span className="chat-viewers" role="group" aria-label={`Viewing now: ${viewers.join(", ")}`} title={`Viewing now: ${viewers.join(", ")}`}>
+            <Eye size={14} aria-hidden="true" />
+            <AvatarStack users={viewers} avatars={avatars} />
+          </span>
+        )}
       </div>
       <div className="topbar-actions">
         <div className="mobile-header-menu">

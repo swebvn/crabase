@@ -4,7 +4,7 @@ namespace app\service;
 
 use PDO;
 use InvalidArgumentException;
-use app\model\{Chat, Message, Approval, Project, Event, Setting, User};
+use app\model\{Chat, Message, Approval, Project, Event, Setting, User, Job};
 
 final class Store
 {
@@ -90,6 +90,8 @@ final class Store
         self::db();
         $chats = Chat::query()->from('chats as c')->select('c.*', 'p.name as project_name')
             ->selectSub(Message::query()->selectRaw('json_group_array(DISTINCT author)')->whereColumn('chat_id', 'c.id')->whereIn('role', ['user','note']), 'participants')
+            ->selectSub(Job::query()->from('jobs as j')->join('messages as m', 'm.id', '=', 'j.message_id')->select('m.author')
+                ->whereColumn('j.chat_id', 'c.id')->where('j.status', 'running')->orderBy('j.id')->limit(1), 'running_by')
             ->leftJoin('projects as p', 'p.id', '=', 'c.project_id')->orderByDesc('c.updated_at')->orderByDesc('c.rowid')->get()->toArray();
         foreach ($chats as &$chat) {
             $chat['participants'] = json_decode($chat['participants'], true);
