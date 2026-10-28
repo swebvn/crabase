@@ -1,28 +1,13 @@
 {
-    "name": "crabase/server",
-    "type": "project",
+  "name": "crabase/server",
+  "type": "project",
   "keywords": [
-    "high performance",
-    "http service"
+    "crabphp",
+    "codex",
+    "workspace"
   ],
-    "homepage": "https://crabphp.dev",
   "license": "MIT",
-  "description": "High performance HTTP Service Framework.",
-  "authors": [
-    {
-      "name": "walkor",
-      "email": "walkor@workerman.net",
-      "homepage": "https://www.workerman.net",
-      "role": "Developer"
-    }
-  ],
-  "support": {
-    "email": "walkor@workerman.net",
-    "issues": "https://github.com/walkor/webman/issues",
-    "forum": "https://wenda.workerman.net/",
-    "wiki": "https://workerman.net/doc/webman",
-    "source": "https://github.com/walkor/webman"
-  },
+  "description": "CrabPHP backend for the Crabase shared coding workspace.",
   "require": {
     "php": ">=8.4",
     "crabphp/framework": "@dev",

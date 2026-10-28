@@ -1,10 +1,10 @@
 # Crabase
 
-A Codex-style shared coding workspace, built with React, PHP Webman/Workerman, and SQLite. The PHP worker talks directly to `codex app-server` over JSONL stdin/stdout. Node also runs the local PTY host used by the integrated terminal.
+A Codex-style shared coding workspace, built with React, CrabPHP, and SQLite. The PHP worker talks directly to `codex app-server` over JSONL stdin/stdout. Node also runs the local PTY host used by the integrated terminal.
 
 ## Run
 
-Requires macOS or Linux, PHP 8.1+ with PDO SQLite, pcntl and posix, Composer, Node 22.12+, and an installed, authenticated Codex CLI.
+Requires macOS or Linux, PHP 8.4+ with PDO SQLite, pcntl and posix, Composer, Node 22.12+, and an installed, authenticated Codex CLI.
 
 ```sh
 npm install
@@ -19,7 +19,7 @@ php start.php start
 
 Open **http://127.0.0.1:8787**. Stop the server with Ctrl+C, or `php start.php stop` from `server/`. For background operation: `php start.php start -d`.
 
-For frontend development, keep PHP running and run `npm run dev` in another terminal. Open http://127.0.0.1:5173. Vite proxies the WebSocket to PHP; production serves compiled static files directly from Webman.
+For frontend development, keep PHP running and run `npm run dev` in another terminal. Open http://127.0.0.1:5173. Vite proxies the WebSocket to PHP; production serves compiled static files directly from CrabPHP.
 
 If `codex` is not on PHP's PATH, set `CODEX_BIN` to its absolute executable path before starting PHP. Authentication and model defaults come from the local Codex CLI configuration. Run `codex login` separately if necessary. `CRABASE_DB` optionally overrides the SQLite path (mainly for isolated testing).
 
@@ -45,7 +45,7 @@ Existing historical identities remain for message attribution but cannot sign in
 
 ### TDA Passport OAuth2 (local deployment)
 
-Register the exact redirect URL `http://127.0.0.1:8787/auth/oauth/callback` with TDA Passport. Put `TDA_PASSPORT_OAUTH_CLIENT_ID` and `TDA_PASSPORT_OAUTH_CLIENT_SECRET` in the ignored `.env` (never frontend code or Git), migrate, and restart PHP. The login screen then offers **Sign in with TDA**. PHP cURL with TLS support is required. The authorization, token and user endpoints are fixed to `https://passport.tdagroup.online/oauth/authorize`, `/oauth/token`, and `/api/user` respectively.
+Register the exact redirect URL `http://127.0.0.1:8787/auth/oauth/callback` with TDA Passport. Put `TDA_PASSPORT_OAUTH_CLIENT_ID` and `TDA_PASSPORT_OAUTH_CLIENT_SECRET` in the ignored `.env` (never frontend code or Git), migrate, and restart PHP. The login screen then offers **Sign in with TDA**. CrabPHP's HTTP client handles the TLS requests. The authorization, token and user endpoints are fixed to `https://passport.tdagroup.online/oauth/authorize`, `/oauth/token`, and `/api/user` respectively.
 
 The integration uses authorization code + S256 PKCE, browser-bound one-use state (10-minute expiry), verified TLS, and server-side token exchange. Provider access tokens are used only to fetch the profile, then discarded. First login requires a top-level `id` and valid `email` from `/api/user`; email verification is not required. A matching enabled account is linked; otherwise a regular user account is created using the provider name and email. Disabled accounts remain blocked, and provider roles never grant administrator access. Later logins use the stored provider ID binding. Passport-created accounts have no known local password; an administrator can set one if needed. Existing password login remains available. Enabling Passport therefore grants Passport users access to this shared workspace. Login completes on `127.0.0.1:8787`, including when initiated from Vite. The OAuth flow cookie is HttpOnly/SameSite=Lax so the provider redirect can complete; normal session cookies remain Strict. This fixed loopback callback is not public-deployment configuration.
 
@@ -57,11 +57,11 @@ Crabase requires login through email/password or configured TDA Passport OAuth2.
 
 ### 1. Install prerequisites
 
-The VPS needs Git, Composer, PHP 8.1+ with PDO SQLite, `pcntl`, and `posix`, Node 22.12+, npm, and the Codex CLI. On Ubuntu/Debian, install the system packages first:
+The VPS needs Git, Composer, PHP 8.4+ with PDO SQLite, `pcntl`, and `posix`, Node 22.12+, npm, and the Codex CLI. On Ubuntu/Debian, install the system packages first:
 
 ```sh
 sudo apt update
-sudo apt install -y git unzip sqlite3 php-cli php-sqlite3 php-mbstring php-curl composer
+sudo apt install -y git unzip sqlite3 php-cli php-sqlite3 php-mbstring composer
 php -m | grep -E 'pcntl|posix|pdo_sqlite'
 node --version
 npm --version
@@ -248,7 +248,7 @@ For failures, check `journalctl -u crabase`, confirm the service user's `CODEX_B
 
 - Responsive desktop-style interface, light/dark themes, project sidebar, search (⌘/Ctrl K), new-chat shortcut (⌘/Ctrl Shift O), composer, and activity panel.
 - Add existing project folders; persistent threads, attributed notes, archives, and activity.
-- Live updates between browser tabs through a Workerman WebSocket process.
+- Live updates between browser tabs through CrabPHP's WebSocket server.
 - Real Codex requests, streamed responses, terminal/file activity, command/file approval dialogs, cancellation, and queued requests.
 - SQLite in WAL mode, busy timeout, foreign keys, prepared statements, and short transactions.
 
@@ -345,7 +345,7 @@ The initial table migrations can adopt the current pre-Phinx schema without rewr
 
 ### Models and users
 
-`server/app/model/` contains Webman Eloquent models for users, accounts, sessions, projects, chats, messages, jobs, approvals, events, settings and pending uploads. Relationships connect projects to chats and users to their messages. `Actions` validates input and coordinates model operations; Phinx owns migrations. `config/database.php` uses SQLite with foreign keys and Webman's connection pool. The Codex worker uses models, with per-chat FIFO selection owned by `Job::nextQueued` and atomic streaming owned by `Message::appendBody`. Visible writes explicitly bump the revision through `Store::notify`; bulk model updates do not emit model events. Revisions and writes share the same transaction. Authentication/session/upload bookkeeping stays silent. Bound SQL remains for atomic message appends, revision/throttle increments and one-use OAuth state consumption; short-lived/composite-key OAuth bookkeeping uses the query builder. `Store::all/run` remain for existing test/operator scripts, not application CRUD.
+`server/app/model/` contains application-owned records backed by CrabPHP's query builder for users, accounts, sessions, projects, chats, messages, jobs, approvals, events, settings and pending uploads. Relations are explicit query methods, and JSON/boolean casts plus hidden credential fields are mapped by the record wrapper. `Actions` validates input and coordinates model operations; Phinx owns migrations. `config/database.php` uses SQLite with foreign keys and one Crab connection pool. The Codex worker uses models, with per-chat FIFO selection owned by `Job::nextQueued` and atomic streaming owned by `Message::appendBody`. Visible writes explicitly bump the revision through `Store::notify`; bulk model updates do not emit model events. Revisions and writes share the same transaction. Authentication/session/upload bookkeeping stays silent. Bound SQL remains for atomic message appends, revision/throttle increments and one-use OAuth state consumption; short-lived/composite-key OAuth bookkeeping uses the query builder. `Store::all/run` remain for existing test/operator scripts, not application CRUD.
 
 Users persist in SQLite with stable IDs, names, avatar URLs, and creation timestamps. Existing human message authors are backfilled into `messages.user_id`. The WebSocket boundary derives message identity from the authenticated session and ignores client `user_id`. Accounts contain private login and optional Git identity fields; workspace snapshots expose only public display identity. Optional TDA Passport OAuth2 links existing accounts or creates regular users on first login. Project visibility and membership are enforced through `ProjectAccess`; do not expose the service publicly without OS isolation.
 
