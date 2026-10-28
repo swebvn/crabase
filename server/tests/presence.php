@@ -1,8 +1,7 @@
 <?php
 require dirname(__DIR__).'/vendor/autoload.php';
 use app\service\{Actions, Auth, Store};
-use Workerman\Connection\TcpConnection;
-use Workerman\Protocols\Http\Request;
+use app\process\{LegacyConnection, LegacyRequest, LegacyWorker};
 
 $directory = sys_get_temp_dir().'/crabase-presence-'.bin2hex(random_bytes(8));
 mkdir($directory, 0700);
@@ -10,11 +9,11 @@ putenv('CRABASE_DB='.$directory.'/test.sqlite');
 putenv('CRABASE_WORKSPACE_ROOT='.$directory);
 function presenceCheck(bool $ok, string $what): void { if (!$ok) throw new RuntimeException('Presence check failed: '.$what); }
 // Records packets instead of writing to a socket; the worker only needs id and send().
-final class RecordingConnection extends TcpConnection
+final class RecordingConnection extends LegacyConnection
 {
     public array $sent = [];
-    public function send(mixed $sendBuffer, bool $raw = false): bool|null { $this->sent[] = json_decode($sendBuffer, true); return true; }
-    public function close(mixed $data = null, bool $raw = false): void {}
+    public function send(string $sendBuffer): void { $this->sent[] = json_decode($sendBuffer, true); }
+    public function close(): void {}
     public function last(string $type): ?array
     {
         foreach (array_reverse($this->sent) as $packet) if (($packet['type'] ?? '') === $type) return $packet;
@@ -26,7 +25,7 @@ try {
     presenceCheck(is_resource($process) && proc_close($process) === 0, 'migrate');
     Store::db();
     $worker = new app\process\Codex();
-    $server = (new ReflectionClass(Workerman\Worker::class))->newInstanceWithoutConstructor();
+    $server = new LegacyWorker();
     (new ReflectionProperty($worker, 'worker'))->setValue($worker, $server);
     $connect = function (int $id, string $name) use ($worker, $server): RecordingConnection {
         $user = Auth::create(['name'=>$name, 'email'=>$name.'@example.com', 'password'=>bin2hex(random_bytes(16))]);
@@ -34,7 +33,8 @@ try {
         $connection->id = $id;
         $connection->sent = [];
         $server->connections[$id] = $connection;
-        $worker->onWebSocketConnect($connection, new Request("GET / HTTP/1.1\r\nHost: 127.0.0.1:8788\r\nOrigin: http://127.0.0.1:8787\r\nCookie: ".Auth::COOKIE.'='.Auth::session($user['id'])."\r\n\r\n"));
+        $request = new \Crab\Http\Request('GET', 'http://127.0.0.1:8788/', ['Origin' => 'http://127.0.0.1:8787', 'Cookie' => Auth::COOKIE.'='.Auth::session($user['id'])]);
+        $worker->onWebSocketConnect($connection, new LegacyRequest($request));
         return $connection;
     };
     $call = function (RecordingConnection $connection, string $action, array $data = []) use ($worker): array {

@@ -29,6 +29,8 @@ abstract class Model implements ArrayAccess
     protected $hidden = [];
     /** @var array<string, string> */
     protected $casts = [];
+    /** @var list<string> Columns stored as SQLite/MySQL integer booleans. */
+    protected $booleans = [];
     /** @var array<string, mixed> */
     protected array $attributes = [];
     /** @var array<string, mixed> */
@@ -55,7 +57,7 @@ abstract class Model implements ArrayAccess
     {
         foreach ($values as $key => $value) {
             if (($this->casts[$key] ?? null) === 'array') $values[$key] = json_encode($value, JSON_THROW_ON_ERROR);
-            elseif (($this->casts[$key] ?? null) === 'bool' || ($this->casts[$key] ?? null) === 'boolean') $values[$key] = (int) $value;
+            elseif (in_array($key, $this->booleans, true)) $values[$key] = (int) (bool) $value;
         }
         return $values;
     }
@@ -141,7 +143,6 @@ abstract class Model implements ArrayAccess
             ->update($this->castValues($values));
         if ($affected > 0) {
             $this->fillRaw($values);
-            Store::notify($affected);
         }
         return $affected > 0;
     }
@@ -151,7 +152,6 @@ abstract class Model implements ArrayAccess
         $affected = Store::connection()->table($this->table)->where($this->primaryKey, $this->getKey())->delete();
         if ($affected > 0) {
             $this->exists = false;
-            Store::notify($affected);
         }
         return $affected > 0;
     }
@@ -182,13 +182,17 @@ abstract class Model implements ArrayAccess
     private function castValues(array $values): array
     {
         foreach ($values as $key => $value) {
-            $values[$key] = $this->castIn((string) $key, $value);
+            $key = (string) $key;
+            $values[$key] = in_array($key, $this->booleans, true)
+                ? (int) (bool) $value
+                : (($this->casts[$key] ?? null) === 'array' ? json_encode($value, JSON_THROW_ON_ERROR) : $value);
         }
         return $values;
     }
 
     private function castIn(string $key, mixed $value): mixed
     {
+        if (in_array($key, $this->booleans, true)) return (int) (bool) $value;
         return match ($this->casts[$key] ?? null) {
             'array' => is_string($value) ? (json_decode($value, true) ?? []) : $value,
             'bool', 'boolean' => (bool) $value,
@@ -310,19 +314,8 @@ final class ModelQuery
         }
         $instance->fillValues($values, true);
         $instance->markExists();
-        Store::notify();
         return $instance;
     }
 
-    public function with(string|array $relations): self
-    {
-        // Eager loading is explicit in model relation methods; remember the names
-        // and hydrate them after rows are read.
-        $this->eager = array_merge($this->eager, (array) $relations);
-        return $this;
-    }
-
-    /** @var list<string> */
-    private array $eager = [];
 }
 

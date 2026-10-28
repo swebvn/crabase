@@ -9,6 +9,7 @@ final class Project extends Model
     public $incrementing = false;
     protected $keyType = 'string';
     protected $fillable = ['id', 'name', 'path', 'archived', 'parent_id', 'visibility'];
+    protected $booleans = ['archived'];
 
     public function members(): ModelCollection
     {

@@ -4,6 +4,35 @@ import base64, json, os, socket, struct, subprocess, uuid, tempfile
 import atexit, urllib.request, urllib.error
 from pathlib import Path
 
+server_process = None
+
+def ensure_server(server):
+    global server_process
+    try:
+        with socket.create_connection(('127.0.0.1', 8787), timeout=0.2):
+            return
+    except OSError:
+        pass
+    server_process = subprocess.Popen(['php', 'start.php', 'start', '--workers=1'], cwd=server)
+    deadline = __import__('time').time() + 10
+    while __import__('time').time() < deadline:
+        try:
+            with socket.create_connection(('127.0.0.1', 8787), timeout=0.2):
+                return
+        except OSError:
+            __import__('time').sleep(0.05)
+    raise RuntimeError('Crab server did not start')
+
+def stop_server():
+    if server_process is not None:
+        server_process.terminate()
+        try:
+            server_process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            server_process.kill()
+
+atexit.register(stop_server)
+
 class Client:
     def __init__(self, origin='http://127.0.0.1:8787', cookie=''):
         self.socket = socket.create_connection(('127.0.0.1',8788),timeout=5)
@@ -28,13 +57,33 @@ class Client:
         header=bytes([0x81,0x80|size]) if size<126 else bytes([0x81,0xfe])+struct.pack('!H',size)
         self.socket.sendall(header+mask+bytes(v^mask[i%4] for i,v in enumerate(data)))
     def receive(self):
-        first,size=self.read(2)
-        if first&15 == 8: raise ConnectionError('Socket closed')
-        assert first&15 == 1 and first&128
+        while True:
+            first,size=self.read(2)
+            opcode=first&15
+            payload=self._frame_payload(size)
+            if opcode == 8: raise ConnectionError('Socket closed')
+            if opcode == 9:
+                self._control(10, payload)
+                continue
+            if opcode == 10: continue
+            assert opcode == 1
+            while not first&128:
+                first,size=self.read(2)
+                assert first&15 == 0
+                payload += self._frame_payload(size)
+            return json.loads(payload)
+
+    def _frame_payload(self,size):
         size &= 127
         if size==126: size=struct.unpack('!H',self.read(2))[0]
         elif size==127: size=struct.unpack('!Q',self.read(8))[0]
-        return json.loads(self.read(size))
+        return self.read(size)
+
+    def _control(self,opcode,payload):
+        mask=os.urandom(4); size=len(payload)
+        if size < 126: header=bytes([0x80|opcode,0x80|size])
+        else: header=bytes([0x80|opcode,0x80|126])+struct.pack('!H',size)
+        self.socket.sendall(header+mask+bytes(v^mask[i%4] for i,v in enumerate(payload)))
     def call(self,action,data=None,error=False):
         self.sequence+=1; self.send({'id':self.sequence,'action':action,'data':data or {}})
         while True:
@@ -51,6 +100,7 @@ class Client:
 
 if __name__=='__main__':
     server = Path(__file__).resolve().parents[1]
+    ensure_server(server)
     accounts = json.loads(subprocess.check_output(['php','tests/auth-fixture.php'],cwd=server))
     atexit.register(lambda: subprocess.run(['php','tests/auth-fixture.php','cleanup',*[a['id'] for a in accounts]],cwd=server,check=True))
     cookies = []
@@ -153,7 +203,14 @@ if __name__=='__main__':
         assert project_id not in pushed['pins']
         assert keep.read_text()=='keep'
         first.call('sync',{'chat_id':owned},error=True)
-    state=first.call('sync')['state']; users={u['name']:u['id'] for u in state['users']}; assert state['projects'] and state['chats']
+    state=first.call('sync')['state']
+    if not state['projects']:
+        subprocess.run(['php', 'vendor/bin/phinx', 'seed:run', '-c', 'phinx.php'], cwd=server, check=True)
+        state=first.call('sync')['state']
+    if not state['chats']:
+        first.call('create', {'title': 'Smoke baseline'})
+        state=first.call('sync')['state']
+    users={u['name']:u['id'] for u in state['users']}; assert state['projects'] and state['chats']
     workspace=first.call('projectWorkspace', {'project_id':state['projects'][0]['id']})
     assert set(workspace)=={'paths','ignored','git','branch','changes'}
     folders=first.call('projectFolders')

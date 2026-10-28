@@ -38,10 +38,9 @@
   "autoload": {
     "psr-4": {
       "app\\": "./app/",
-      "App\\": "./app/",
-      "support\\": "./support/"
+      "App\\": "./app/"
     },
-    "files": ["app/functions.php"]
+    "files": ["app/functions.php", "app/process/Legacy.php"]
   },
   "minimum-stability": "dev",
   "prefer-stable": true,

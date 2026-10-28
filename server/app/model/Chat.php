@@ -9,6 +9,7 @@ final class Chat extends Model
     public $incrementing = false;
     protected $keyType = 'string';
     protected $fillable = ['id', 'project_id', 'title', 'status', 'archived', 'thread_id', 'created_at', 'updated_at'];
+    protected $booleans = ['archived'];
 
     public function project(): ?Project
     {

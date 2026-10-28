@@ -15,9 +15,14 @@ final class Store
     private static ?DatabaseManager $manager = null;
     private static ?Connection $transaction = null;
 
-    public static function db(): object
+    public static function useManager(DatabaseManager $manager): void
     {
-        return new DatabaseCompat(self::connection());
+        self::$manager = $manager;
+    }
+
+    public static function db(): Database|Connection
+    {
+        return self::connection();
     }
 
     public static function connection(): Database|Connection
@@ -120,11 +125,4 @@ final class Store
         $config = require dirname(__DIR__, 2).'/config/crabase.php';
         return new DatabaseManager(['sqlite' => ['driver' => 'sqlite', 'database' => $config['database_path'], 'pool' => 1, 'timeout' => 5]], 'sqlite');
     }
-}
-
-final class DatabaseCompat
-{
-    public function __construct(private readonly Database|Connection $connection) {}
-    public function exec(string $sql): int { return $this->connection->execute($sql); }
-    public function __call(string $name, array $arguments): mixed { return $this->connection->{$name}(...$arguments); }
 }

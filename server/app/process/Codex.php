@@ -5,11 +5,11 @@ namespace app\process;
 use app\service\Store;
 use app\service\Auth;
 use app\service\{ProjectAccess, ModelCatalog};
-use app\model\{Job, Chat, Message, Approval, Setting};
-use Workerman\Timer;
-use Workerman\Worker;
-use Workerman\Connection\TcpConnection;
-use Workerman\Protocols\Http\Request;
+use app\model\{Job, Chat, Message, Approval, Project, Setting};
+use app\process\LegacyTimer as Timer;
+use app\process\LegacyWorker as Worker;
+use app\process\LegacyConnection as TcpConnection;
+use app\process\LegacyRequest as Request;
 
 final class Codex
 {
@@ -755,18 +755,19 @@ final class Codex
         if (!$actor) throw new \InvalidArgumentException('Authentication required.');
         ProjectAccess::chat($actor, $chatId);
         if ($action === 'terminalOpen') {
-            $row = Chat::query()->with('project')->find($chatId);
+            $row = Chat::query()->find($chatId);
             if (!$row) {
                 throw new \InvalidArgumentException('Conversation not found.');
             }
-            $path = $row->project?->workspacePath();
+            $project = $row->project_id === null ? null : Project::query()->find($row->project_id);
+            $path = $project?->workspacePath();
             if (!$path) {
                 $workspaceRoot = realpath(config('crabase.workspace_root'));
                 if (!$workspaceRoot || !is_dir($workspaceRoot)) throw new \RuntimeException('Workspace folder is unavailable.');
                 $path = $workspaceRoot.'/.chats/'.$chatId;
             }
             $cwd = $path;
-            if (!$row->project && !is_dir($cwd) && !mkdir($cwd, 0700, true) && !is_dir($cwd)) {
+            if ($project === null && !is_dir($cwd) && !mkdir($cwd, 0700, true) && !is_dir($cwd)) {
                 throw new \RuntimeException('Could not create the chat directory.');
             }
             $cwd = realpath($cwd);
@@ -842,7 +843,7 @@ final class Codex
             foreach ($this->terminalPipes as $pipe) stream_set_blocking($pipe, false);
             // PTY input/output must not wait for the agent's 50 ms scheduling tick.
             foreach ([1, 2] as $index) {
-                Worker::$globalEvent?->onReadable($this->terminalPipes[$index], fn () => $this->terminalPump());
+                $this->worker?->onReadable($this->terminalPipes[$index], fn () => $this->terminalPump());
             }
         }
         $this->terminalOutput .= json_encode($message, JSON_INVALID_UTF8_SUBSTITUTE)."\n";
@@ -870,13 +871,13 @@ final class Codex
             $this->terminalOutput = substr($this->terminalOutput, $written);
         }
         if ($this->terminalOutput === '') {
-            Worker::$globalEvent?->offWritable($this->terminalPipes[0]);
+            $this->worker?->offWritable($this->terminalPipes[0]);
         } else {
-            Worker::$globalEvent?->onWritable($this->terminalPipes[0], fn () => $this->terminalPump());
+            $this->worker?->onWritable($this->terminalPipes[0], fn () => $this->terminalPump());
         }
         $stderr = stream_get_contents($this->terminalPipes[2]);
         if ($stderr) file_put_contents(dirname(__DIR__, 2).'/runtime/logs/terminal.log', $stderr, FILE_APPEND);
-        if (feof($this->terminalPipes[2])) Worker::$globalEvent?->offReadable($this->terminalPipes[2]);
+        if (feof($this->terminalPipes[2])) $this->worker?->offReadable($this->terminalPipes[2]);
         $this->terminalInput .= stream_get_contents($this->terminalPipes[1]);
         while (($end = strpos($this->terminalInput, "\n")) !== false) {
             $line = substr($this->terminalInput, 0, $end);
@@ -925,8 +926,8 @@ final class Codex
     private function terminalShutdown(): void
     {
         foreach ($this->terminalPipes as $pipe) if (is_resource($pipe)) {
-            Worker::$globalEvent?->offReadable($pipe);
-            Worker::$globalEvent?->offWritable($pipe);
+            $this->worker?->offReadable($pipe);
+            $this->worker?->offWritable($pipe);
             fclose($pipe);
         }
         if (is_resource($this->terminalProcess)) {

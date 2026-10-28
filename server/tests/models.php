@@ -55,7 +55,7 @@ try {
     }
     try { A::handle('message', ['chat_id'=>$chat,'body'=>'spoof','user_id'=>'missing']); throw new RuntimeException('Unknown user accepted'); } catch (InvalidArgumentException) {}
     try {
-        \support\Db::transaction(function () use ($user) {
+        S::transaction(function () use ($user) {
             $user->update(['avatar_url'=>'https://example.com/rollback.png']);
             S::run('UPDATE users SET name=? WHERE id=?', ['rollback-name', $user->id]);
             throw new RuntimeException('rollback test');
@@ -72,7 +72,7 @@ try {
     check($message->fresh()->body === $original."'quoted' \nΔ" && $revision() === $before + 1);
     $before = $revision();
     try {
-        \support\Db::transaction(function () use ($message) {
+        S::transaction(function () use ($message) {
             \app\model\Message::appendBody($message->id, 'rolled back');
             \app\model\Setting::put('rollback-test', 'value');
             throw new RuntimeException('rollback');

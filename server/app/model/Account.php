@@ -10,4 +10,5 @@ final class Account extends Model
     protected $keyType = 'string';
     protected $fillable = ['user_id', 'email', 'password_hash', 'admin', 'enabled', 'git_name', 'git_email'];
     protected $hidden = ['password_hash'];
+    protected $booleans = ['admin', 'enabled'];
 }
