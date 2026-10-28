@@ -10,9 +10,12 @@ use app\process\LegacyTimer as Timer;
 use app\process\LegacyWorker as Worker;
 use app\process\LegacyConnection as TcpConnection;
 use app\process\LegacyRequest as Request;
+use Crab\Contracts\Log\Logger;
+use Crab\Log\Logger as DefaultLogger;
 
 final class Codex
 {
+    private readonly Logger $logger;
     private mixed $process = null;
     private array $pipes = [];
     private array $pending = [];
@@ -33,6 +36,11 @@ final class Codex
     private string $terminalOutput = '';
     private array $terminals = [];
     private int $terminalSequence = 0;
+
+    public function __construct(?Logger $logger = null)
+    {
+        $this->logger = $logger ?? new DefaultLogger();
+    }
 
     public function onWorkerStart(Worker $worker): void
     {
@@ -208,7 +216,7 @@ final class Codex
         } catch (\InvalidArgumentException|\JsonException $e) {
             $this->reply($connection, ['id' => $id,'error' => $e->getMessage()]);
         } catch (\Throwable $e) {
-            error_log((string)$e);
+            $this->logger->error('Codex request failed.', ['exception' => $e]);
             $this->reply($connection, ['id' => $id,'error' => 'Unable to save changes. Please try again.']);
         }
     }
@@ -453,7 +461,7 @@ final class Codex
             $this->shutdown();
             $this->retryAt = microtime(true) + 5;
             $this->status('error');
-            error_log('Crabase: '.$error->getMessage());
+            $this->logger->error('Crabase worker failed.', ['message' => $error->getMessage(), 'exception' => $error]);
         }
     }
 

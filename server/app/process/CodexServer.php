@@ -15,6 +15,7 @@ use Crab\Engine\WebSocket\WebSocketSession;
 use Crab\Engine\Http\Request;
 use Crab\Http\Request as HttpRequest;
 use Crab\Contracts\WorkerProvider;
+use Crab\Contracts\Log\Logger;
 
 /** Registers the persistent Codex worker as a kept Crab server. */
 final class CodexServer implements WorkerProvider
@@ -47,7 +48,7 @@ final class CodexServer implements WorkerProvider
             return;
         }
         $this->worker = new LegacyWorker($worker->loop);
-        $this->codex = new Codex();
+        $this->codex = new Codex($container->get(Logger::class));
         $this->codex->onWorkerStart($this->worker);
     }
 

@@ -7,6 +7,7 @@ use Crab\Contracts\Http\Request;
 use Crab\Http\Cookie;
 use Crab\Http\Response;
 use Crab\HttpClient\Client;
+use Crab\Contracts\Log\Logger;
 
 final class OAuth
 {
@@ -102,7 +103,7 @@ final class OAuth
             return $account['user_id'];
         });
     }
-    public static function callback(Request $request): Response
+    public static function callback(Request $request, ?Logger $logger = null): Response
     {
         $headers = ['Cache-Control'=>'no-store','Referrer-Policy'=>'no-referrer','X-Content-Type-Options'=>'nosniff'];
         $stage = 'validate';
@@ -137,7 +138,12 @@ final class OAuth
             return Response::html(htmlspecialchars($error->getMessage(), ENT_QUOTES, 'UTF-8').' <a href="/">Return to sign in</a>', 400, $headers)->withCookie(Cookie::forget(self::COOKIE, '/auth/oauth'));
         } catch (\Throwable $error) {
             // Do not log provider codes, tokens, request bodies or client secrets.
-            error_log(json_encode(['event'=>'oauth_callback_failed','stage'=>$stage,'exception'=>get_class($error),'message'=>$error->getMessage(),'file'=>$error->getFile(),'line'=>$error->getLine()], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE));
+            ($logger ?? new \Crab\Log\Logger())->error('OAuth callback failed.', [
+                'event' => 'oauth_callback_failed',
+                'stage' => $stage,
+                'message' => $error->getMessage(),
+                'exception' => $error,
+            ]);
             return Response::html('Unable to complete sign-in. <a href="/">Try again</a>', 503, $headers)->withCookie(Cookie::forget(self::COOKIE, '/auth/oauth'));
         }
     }
