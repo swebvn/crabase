@@ -48,13 +48,13 @@ final class ProjectAccess
     public static function sharing(array $actor, array $data, bool $save): array
     {
         if (!$actor['admin']) throw new InvalidArgumentException('Administrator access required.');
-        $project = Project::query()->find(Store::text($data['project_id'] ?? null, 64)) ?? throw new InvalidArgumentException('Project not found.');
+        $project = Project::query()->find(Input::text($data['project_id'] ?? null, 64)) ?? throw new InvalidArgumentException('Project not found.');
         if ($project->parent_id) throw new InvalidArgumentException('Manage sharing on the original project.');
         if ($save) {
             $visibility = $data['visibility'] ?? null;
             $members = $data['members'] ?? null;
             if (!in_array($visibility, ['private', 'public'], true) || !is_array($members) || !array_is_list($members) || count($members) > 1000) throw new InvalidArgumentException('Invalid sharing settings.');
-            foreach ($members as $id) Store::text($id, 64);
+            foreach ($members as $id) Input::text($id, 64);
             $members = array_values(array_unique($members));
             if (Account::query()->where('enabled', 1)->whereIn('user_id', $members)->count() !== count($members)) throw new InvalidArgumentException('Select enabled users only.');
             \app\service\Store::transaction(function () use ($project, $visibility, $members) {

@@ -35,10 +35,10 @@ final class Attachments
 
     public static function handle(string $action, array $data): array
     {
-        $user = Store::text($data['user_id'] ?? null, 64);
+        $user = Input::text($data['user_id'] ?? null, 64);
         if ($action === 'uploadStart') {
             self::cleanup();
-            $name = Store::text($data['name'] ?? null, 255);
+            $name = Input::text($data['name'] ?? null, 255);
             if (preg_match('/[\x00-\x1f\x7f\/\\\\]/', $name)) throw new \InvalidArgumentException('Invalid filename.');
             $size = $data['size'] ?? null;
             if (!is_int($size) || $size < 1 || $size > self::MAX_SIZE) throw new \InvalidArgumentException('Files must be between 1 byte and 5 MB.');
@@ -49,7 +49,7 @@ final class Attachments
             });
             return ['id'=>$id];
         }
-        $id = Store::text($data['id'] ?? null, 32);
+        $id = Input::text($data['id'] ?? null, 32);
         $row = Upload::query()->whereKey($id)->where('user_id', $user)->where('expires', '>=', time())->first();
         if (!$row) throw new \InvalidArgumentException('Upload expired or unavailable. Please attach the file again.');
         if ($action === 'uploadRemove') {
@@ -85,7 +85,7 @@ final class Attachments
         if (!is_array($ids) || !array_is_list($ids) || count($ids) > 10) throw new \InvalidArgumentException('Attach at most 10 files.');
         $files = [];
         foreach ($ids as $id) {
-            $id = Store::text($id, 32);
+            $id = Input::text($id, 32);
             if (isset($files[$id])) throw new \InvalidArgumentException('Duplicate attachment.');
             $row = Upload::query()->whereKey($id)->where('user_id', $user)->whereColumn('received', 'size')->whereNotNull('mime')->where('expires', '>=', time())->first();
             if (!$row || !is_file(self::path($id))) throw new \InvalidArgumentException('Attachment is not ready or has expired. Please attach it again.');
@@ -96,7 +96,7 @@ final class Attachments
 
     public static function saveAvatar(array $data): array
     {
-        $user = Store::text($data['user_id'] ?? null, 64);
+        $user = Input::text($data['user_id'] ?? null, 64);
         $file = self::pending([$data['id'] ?? null], $user)[0];
         $source = self::path($file['id']);
         $mime = (new \finfo(FILEINFO_MIME_TYPE))->file($source);

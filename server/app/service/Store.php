@@ -64,11 +64,6 @@ final class Store
         self::connection()->execute("INSERT INTO settings VALUES ('revision','1') ON CONFLICT(key) DO UPDATE SET value=CAST(value AS INTEGER)+1");
     }
 
-    public static function text(mixed $value, int $max = 20000): string
-    {
-        if (!is_string($value) || trim($value) === '' || strlen($value) > $max) throw new InvalidArgumentException("Enter between 1 and $max characters.");
-        return trim($value);
-    }
 
     public static function event(?string $chat, string $label): void
     {

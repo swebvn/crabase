@@ -4,7 +4,7 @@ namespace app\process;
 
 use app\service\Store;
 use app\service\Auth;
-use app\service\{ProjectAccess, ModelCatalog};
+use app\service\{Input, ProjectAccess, ModelCatalog};
 use app\model\{Job, Chat, Message, Approval, Project, Setting};
 use Crab\Contracts\Log\Logger;
 use Crab\Engine\EventLoop;
@@ -166,8 +166,8 @@ final class Codex
             }
             $id = $m['id'];
             $presence = [];
-            if (!empty($m['data']['project_id'])) ProjectAccess::project($actor, Store::text($m['data']['project_id'], 64));
-            if (!empty($m['data']['chat_id'])) ProjectAccess::chat($actor, Store::text($m['data']['chat_id'], 64));
+            if (!empty($m['data']['project_id'])) ProjectAccess::project($actor, Input::text($m['data']['project_id'], 64));
+            if (!empty($m['data']['chat_id'])) ProjectAccess::chat($actor, Input::text($m['data']['chat_id'], 64));
             if ($m['action'] === 'models') {
                 if (!$this->process) {
                     $this->boot();
@@ -176,7 +176,7 @@ final class Codex
                 }
                 $result = ['ok' => true];
             } elseif ($m['action'] === 'sync') {
-                $chatId = empty($m['data']['chat_id']) ? null : Store::text($m['data']['chat_id'], 64);
+                $chatId = empty($m['data']['chat_id']) ? null : Input::text($m['data']['chat_id'], 64);
                 $after = $m['data']['after'] ?? null;
                 $before = $m['data']['before'] ?? null;
                 $limit = $m['data']['limit'] ?? 150;
@@ -207,7 +207,7 @@ final class Codex
             } else {
                 $m['data']['user_id'] = $actor['id'];
                 if ($m['action'] === 'projectDelete') {
-                    $chatIds = Chat::query()->where('project_id', Store::text($m['data']['project_id'] ?? null, 64))->pluck('id');
+                    $chatIds = Chat::query()->where('project_id', Input::text($m['data']['project_id'] ?? null, 64))->pluck('id');
                     foreach ($this->terminals as $terminal) {
                         if ($terminal['running'] && in_array($terminal['chat_id'], $chatIds, true)) throw new \InvalidArgumentException('Close this workspace’s terminals before deleting it.');
                     }
@@ -818,7 +818,7 @@ final class Codex
             $this->terminalBroadcast($chatId, ['event' => 'opened','terminal' => $this->terminals[$id]]);
             return ['terminal' => $this->terminals[$id]];
         }
-        $id = Store::text($data['terminal_id'] ?? null, 64);
+        $id = Input::text($data['terminal_id'] ?? null, 64);
         $terminal = $this->terminals[$id] ?? null;
         if (!$terminal || $terminal['chat_id'] !== $chatId) {
             throw new \InvalidArgumentException('Terminal not found.');

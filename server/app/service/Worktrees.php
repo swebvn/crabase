@@ -43,11 +43,11 @@ final class Worktrees
 
     public static function create(array $data): array
     {
-        $project = Project::query()->find(Store::text($data['project_id'] ?? null, 64))
+        $project = Project::query()->find(Input::text($data['project_id'] ?? null, 64))
             ?? throw new InvalidArgumentException('Project not found.');
         if ($project->parent_id || $project->archived) throw new InvalidArgumentException('Create worktrees from an active original project.');
         $root = $project->workspacePath();
-        $branch = Store::text($data['branch'] ?? null, 160);
+        $branch = Input::text($data['branch'] ?? null, 160);
         if (!preg_match('~^[A-Za-z0-9][A-Za-z0-9._/-]*$~D', $branch) ||
             ProjectWorkspace::command($root, ['check-ref-format', '--branch', $branch])[0] !== 0) {
             throw new InvalidArgumentException('Enter a valid new branch name, such as feature/login.');

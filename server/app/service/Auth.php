@@ -47,13 +47,13 @@ final class Auth
     }
     private static function email(mixed $value): string
     {
-        $email = strtolower(Store::text($value, 254));
+        $email = strtolower(Input::text($value, 254));
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) throw new InvalidArgumentException('Enter a valid email address.');
         return $email;
     }
     private static function name(mixed $value): string
     {
-        $name = Store::text($value, 100);
+        $name = Input::text($value, 100);
         if (preg_match('/[\x00-\x1f\x7f<>]/', $name)) throw new InvalidArgumentException('Invalid name.');
         return $name;
     }
@@ -119,7 +119,7 @@ final class Auth
     {
         Store::db();
         if ($admin && !$actor['admin']) throw new InvalidArgumentException('Administrator access required.');
-        $id = $admin ? Store::text($data['id'] ?? null, 64) : $actor['id'];
+        $id = $admin ? Input::text($data['id'] ?? null, 64) : $actor['id'];
         $account = Account::query()->find($id) ?? throw new InvalidArgumentException('User not found.');
         $name = self::name($data['name'] ?? null);
         $email = self::email($data['email'] ?? null);

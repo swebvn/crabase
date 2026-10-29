@@ -126,7 +126,7 @@ final class ProjectWorkspace
 
     private static function root(array $data): string
     {
-        $id = Store::text($data['project_id'] ?? null, 64);
+        $id = Input::text($data['project_id'] ?? null, 64);
         $project = Project::query()->find($id);
         if (!$project) throw new InvalidArgumentException('Project not found.');
         return $project->workspacePath();
@@ -134,7 +134,7 @@ final class ProjectWorkspace
 
     private static function relative(mixed $value): string
     {
-        $path = Store::text($value, 4096);
+        $path = Input::text($value, 4096);
         if (str_contains($path, "\0") || str_starts_with($path, '/') || str_starts_with($path, '\\')) {
             throw new InvalidArgumentException('Invalid project path.');
         }

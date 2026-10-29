@@ -18,7 +18,7 @@ final class Actions
             }
             return ['model' => null,'effort' => null];
         }
-        $model = Store::text($model, 200);
+        $model = Input::text($model, 200);
         $models = ModelCatalog::all();
         $selected = array_values(array_filter($models, fn ($entry) => $entry['model'] === $model))[0] ?? null;
         if (!$selected) {
@@ -89,9 +89,9 @@ final class Actions
 
     public static function pinProject(array $data): array
     {
-        $id = Store::text($data['project_id'] ?? null, 64);
+        $id = Input::text($data['project_id'] ?? null, 64);
         if (!is_bool($data['pinned'] ?? null)) throw new InvalidArgumentException('Pinned must be a boolean.');
-        $user = User::query()->find(Store::text($data['user_id'] ?? null, 64)) ?? throw new InvalidArgumentException('User not found.');
+        $user = User::query()->find(Input::text($data['user_id'] ?? null, 64)) ?? throw new InvalidArgumentException('User not found.');
         if (!Project::query()->whereKey($id)->exists()) throw new InvalidArgumentException('Project not found.');
         if ($data['pinned']) {
             Store::connection()->table('project_pins')->upsert([['user_id' => $user->id, 'project_id' => $id]], ['user_id', 'project_id'], []);
@@ -103,7 +103,7 @@ final class Actions
 
     public static function manageProject(string $action, array $data): array
     {
-        $id = Store::text($data['project_id'] ?? null, 64);
+        $id = Input::text($data['project_id'] ?? null, 64);
         if ($action === 'projectArchive' && !is_bool($data['archived'] ?? null)) {
             throw new InvalidArgumentException('Archived must be a boolean.');
         }
@@ -134,7 +134,7 @@ final class Actions
 
     public static function createChat(array $data): array
     {
-        $project = empty($data['project_id']) ? null : Store::text($data['project_id'], 64);
+        $project = empty($data['project_id']) ? null : Input::text($data['project_id'], 64);
         if ($project !== null && !Project::query()->whereKey($project)->exists()) {
             throw new InvalidArgumentException('Project not found.');
         }
@@ -142,7 +142,7 @@ final class Actions
         $now = gmdate('c');
         Chat::query()->create([
             'id' => $id, 'project_id' => $project,
-            'title' => Store::text($data['title'] ?? 'New chat', 512),
+            'title' => Input::text($data['title'] ?? 'New chat', 512),
             'created_at' => $now, 'updated_at' => $now,
         ]);
         Store::event($id, 'Started a new thread');
@@ -151,20 +151,20 @@ final class Actions
 
     public static function renameChat(array $data): array
     {
-        $chat = Chat::query()->find(Store::text($data['chat_id'] ?? null, 64)) ?? throw new InvalidArgumentException('Conversation not found.');
-        $chat->update(['title' => Store::text($data['title'] ?? null, 512)]);
+        $chat = Chat::query()->find(Input::text($data['chat_id'] ?? null, 64)) ?? throw new InvalidArgumentException('Conversation not found.');
+        $chat->update(['title' => Input::text($data['title'] ?? null, 512)]);
         return ['ok' => true];
     }
 
 
     public static function sendMessage(array $data): array
     {
-        $chat = Chat::query()->find(Store::text($data['chat_id'] ?? null, 64)) ?? throw new InvalidArgumentException('Conversation not found.');
+        $chat = Chat::query()->find(Input::text($data['chat_id'] ?? null, 64)) ?? throw new InvalidArgumentException('Conversation not found.');
         $id = $chat['id'];
         $body = $data['body'] ?? '';
         if (!is_string($body) || strlen($body) > 20000) throw new InvalidArgumentException('Message must be at most 20000 characters.');
         $body = trim($body);
-        $user = User::query()->find(Store::text($data['user_id'] ?? null, 64)) ?? throw new InvalidArgumentException('User not found.');
+        $user = User::query()->find(Input::text($data['user_id'] ?? null, 64)) ?? throw new InvalidArgumentException('User not found.');
         $author = $user['name'];
         $pending = Attachments::pending($data['attachments'] ?? [], $user->id);
         if ($body === '' && !$pending) throw new InvalidArgumentException('Enter a message or attach a file.');
@@ -196,7 +196,7 @@ final class Actions
 
     public static function archiveChat(array $data): array
     {
-        $chat = Chat::query()->find(Store::text($data['chat_id'] ?? null, 64)) ?? throw new InvalidArgumentException('Conversation not found.');
+        $chat = Chat::query()->find(Input::text($data['chat_id'] ?? null, 64)) ?? throw new InvalidArgumentException('Conversation not found.');
         $id = $chat['id'];
         if ($chat['status'] !== 'idle') {
             throw new InvalidArgumentException('Stop the active work before archiving.');
@@ -207,7 +207,7 @@ final class Actions
 
     public static function cancelJobs(array $data): array
     {
-        $chat = Chat::query()->find(Store::text($data['chat_id'] ?? null, 64)) ?? throw new InvalidArgumentException('Conversation not found.');
+        $chat = Chat::query()->find(Input::text($data['chat_id'] ?? null, 64)) ?? throw new InvalidArgumentException('Conversation not found.');
         $id = $chat['id'];
         Job::query()->where('chat_id', $id)->whereIn('status', ['queued','running'])->update(['cancel' => 1]);
         return ['ok' => true];
@@ -215,7 +215,7 @@ final class Actions
 
     public static function decideApproval(array $data): array
     {
-        $chat = Chat::query()->find(Store::text($data['chat_id'] ?? null, 64)) ?? throw new InvalidArgumentException('Conversation not found.');
+        $chat = Chat::query()->find(Input::text($data['chat_id'] ?? null, 64)) ?? throw new InvalidArgumentException('Conversation not found.');
         $id = $chat['id'];
         if (!in_array($data['decision'] ?? '', ['accept','decline'])) {
             throw new InvalidArgumentException('Invalid approval decision.');
@@ -227,8 +227,8 @@ final class Actions
 
     public static function updateUserAvatar(array $data): array
     {
-        $user = User::query()->find(Store::text($data['user_id'] ?? null, 64)) ?? throw new InvalidArgumentException('User not found.');
-        $url = Store::text($data['avatar_url'] ?? null, 4096);
+        $user = User::query()->find(Input::text($data['user_id'] ?? null, 64)) ?? throw new InvalidArgumentException('User not found.');
+        $url = Input::text($data['avatar_url'] ?? null, 4096);
         if (!filter_var($url, FILTER_VALIDATE_URL) || !in_array(strtolower(parse_url($url, PHP_URL_SCHEME) ?: ''), ['http','https'], true)) {
             throw new InvalidArgumentException('Enter an HTTP or HTTPS image URL.');
         }
