@@ -21,6 +21,17 @@ Open **http://127.0.0.1:8787**. Stop the server with Ctrl+C, or `php start.php s
 
 For frontend development, keep PHP running and run `npm run dev` in another terminal. Open http://127.0.0.1:5173. Vite proxies the WebSocket to PHP; production serves compiled static files directly from CrabPHP.
 
+For temporary development from a trusted LAN or NetBird mesh, bind both listeners to all interfaces and allow the mesh network explicitly. Replace the network with the range used by your mesh:
+
+```sh
+CRABASE_BIND_HOST=0.0.0.0 \
+CRABASE_ALLOWED_HOSTS=100.99.0.0/16 \
+php server/start.php start
+pnpm exec vite --host 0.0.0.0
+```
+
+Open `http://<mesh-ip>:5173` in the browser. `CRABASE_BIND_HOST` defaults to `127.0.0.1`, and the host allow-list remains empty unless configured, so ordinary local development stays loopback-only.
+
 If `codex` is not on PHP's PATH, set `CODEX_BIN` to its absolute executable path before starting PHP. Authentication and model defaults come from the local Codex CLI configuration. Run `codex login` separately if necessary. `CRABASE_DB` optionally overrides the SQLite path (mainly for isolated testing).
 
 ## Accounts and first admin
@@ -53,7 +64,7 @@ The integration uses authorization code + S256 PKCE, browser-bound one-use state
 
 Our deployment target is one VPS for a trusted team, reached over the team's private mesh network. Use the systemd setup below; Docker, Composer-global installation, and a public installer are not needed. The intended CI/CD flow is **push to `main` → test/build in GitHub Actions → deploy the tested commit over SSH**. This section documents the procedure; a deployment workflow and `crabase update` command are **not implemented yet**.
 
-Crabase requires login through email/password or configured TDA Passport OAuth2. Projects default to private; admins use **Settings → Admin → Projects** to grant enabled users access or choose Public (all signed-in users). Admins always have access, worktrees inherit their parent’s sharing, and standalone chats remain shared. Existing projects become private on migration. Access checks cover workspace requests, live updates, terminals and artifact downloads. OS isolation is not implemented: shell commands and agents still share the server account and can reach other folders, so members must remain trusted collaborators. For deployment, bind both listeners to loopback and connect through an SSH tunnel; the current all-interface bindings are for temporary LAN/NetBird testing. Do not expose ports 8787 or 8788 publicly.
+Crabase requires login through email/password or configured TDA Passport OAuth2. Projects default to private; admins use **Settings → Admin → Projects** to grant enabled users access or choose Public (all signed-in users). Admins always have access, worktrees inherit their parent’s sharing, and standalone chats remain shared. Existing projects become private on migration. Access checks cover workspace requests, live updates, terminals and artifact downloads. OS isolation is not implemented: shell commands and agents still share the server account and can reach other folders, so members must remain trusted collaborators. For deployment, keep both listeners on loopback and connect through an SSH tunnel. Direct mesh binding is an opt-in development setting; do not expose ports 8787 or 8788 to an untrusted network.
 
 ### 1. Install prerequisites
 
@@ -149,7 +160,7 @@ sudo journalctl -u crabase -f
 
 ### 4. Connect privately
 
-Join the same mesh network as the VPS, then use its mesh hostname or address for SSH. **The current application still requires localhost browser URLs**: joining the mesh does not make direct `http://<mesh-ip>:8787` access supported. HTTP/WS checks and the TDA callback are loopback-specific. From your computer, forward both listeners:
+Join the same mesh network as the VPS, then use its mesh hostname or address for SSH. The default deployment keeps the application on loopback, so forward both listeners from your computer:
 
 ```sh
 ssh -N \

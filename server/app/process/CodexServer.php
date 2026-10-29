@@ -26,12 +26,13 @@ final class CodexServer implements WorkerProvider
     public function register(Container $container): void
     {
         $servers = $container->get(Servers::class);
-        $servers->add('codex', function (): array {
+        $host = (string) config('crabase.bind_host', '127.0.0.1');
+        $servers->add('codex', function () use ($host): array {
             return [new Workers(
                 'codex',
                 workers: 1,
-                setup: function (Crab $group): void {
-                    $group->listen('tcp://127.0.0.1:8788', new WebSocketServer(
+                setup: function (Crab $group) use ($host): void {
+                    $group->listen('tcp://'.$host.':8788', new WebSocketServer(
                         function (WebSocketSession $session, string $message, MessageType $type): void { $this->message($session, $message, $type); },
                         function (WebSocketSession $session, Request $request): void { $this->open($session, $request); },
                         function (WebSocketSession $session, int $code, string $reason): void { $this->close($session); },
