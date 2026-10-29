@@ -25,7 +25,7 @@
       "app\\": "./app/",
       "App\\": "./app/"
     },
-    "files": ["app/functions.php", "app/process/Legacy.php"]
+    "files": ["app/functions.php"]
   },
   "minimum-stability": "dev",
   "prefer-stable": true,

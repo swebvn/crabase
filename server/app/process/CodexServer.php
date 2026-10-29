@@ -10,10 +10,10 @@ use Crab\Contracts\Servers;
 use Crab\Contracts\Workers;
 use Crab\Engine\Crab;
 use Crab\Engine\WebSocket\MessageType;
+use Crab\Engine\WebSocket\Config;
 use Crab\Engine\Server\WebSocketServer;
 use Crab\Engine\WebSocket\WebSocketSession;
 use Crab\Engine\Http\Request;
-use Crab\Http\Request as HttpRequest;
 use Crab\Contracts\WorkerProvider;
 use Crab\Contracts\Log\Logger;
 
@@ -21,7 +21,6 @@ use Crab\Contracts\Log\Logger;
 final class CodexServer implements WorkerProvider
 {
     private ?Codex $codex = null;
-    private ?LegacyWorker $worker = null;
 
     public function register(Container $container): void
     {
@@ -36,6 +35,7 @@ final class CodexServer implements WorkerProvider
                         function (WebSocketSession $session, string $message, MessageType $type): void { $this->message($session, $message, $type); },
                         function (WebSocketSession $session, Request $request): void { $this->open($session, $request); },
                         function (WebSocketSession $session, int $code, string $reason): void { $this->close($session); },
+                        config: new Config(maxQueuedOutputBytes: 8 * 1024 * 1024),
                         accept: fn(Request $request): bool => $this->accept($request),
                     ));
                 },
@@ -48,9 +48,8 @@ final class CodexServer implements WorkerProvider
         if ($worker->group->name !== 'codex') {
             return;
         }
-        $this->worker = new LegacyWorker($worker->loop);
         $this->codex = new Codex($container->get(Logger::class));
-        $this->codex->onWorkerStart($this->worker);
+        $this->codex->onWorkerStart($worker);
     }
 
     public function stop(\Crab\Engine\Process\Worker $worker, Container $container): void
@@ -60,45 +59,33 @@ final class CodexServer implements WorkerProvider
         }
         $this->codex?->onWorkerStop();
         $this->codex = null;
-        $this->worker = null;
     }
 
     private function accept(Request $request): bool
     {
-        $host = explode(':', (string) $request->header('Host'))[0];
+        $host = explode(':', (string) ($request->header('Host') ?? ''))[0];
         if (!Auth::allowedHost($host)) return false;
         return true;
     }
 
     private function open(WebSocketSession $session, Request $request): void
     {
-        if ($this->codex === null || $this->worker === null) {
+        if ($this->codex === null) {
             $session->close(1011, 'Codex worker is unavailable');
             return;
         }
-        $connection = new LegacyConnection($session);
-        $this->worker->connections[$connection->id] = $connection;
-        $this->codex->onWebSocketConnect($connection, new LegacyRequest(HttpRequest::fromEngine($request)));
+        $this->codex->onWebSocketConnect($session, $request);
     }
 
     private function message(WebSocketSession $session, string $message, MessageType $type): void
     {
-        if ($this->codex === null || $this->worker === null) return;
-        foreach ($this->worker->connections as $connection) {
-            if ($connection->session !== $session) continue;
-            $this->codex->onMessage($connection, $message);
-            return;
-        }
+        if ($this->codex === null) return;
+        $this->codex->onMessage($session, $message);
     }
 
     private function close(WebSocketSession $session): void
     {
-        if ($this->codex === null || $this->worker === null) return;
-        foreach ($this->worker->connections as $connection) {
-            if ($connection->session !== $session) continue;
-            $this->codex->onClose($connection);
-            unset($this->worker->connections[$connection->id]);
-            return;
-        }
+        if ($this->codex === null) return;
+        $this->codex->onClose($session);
     }
 }

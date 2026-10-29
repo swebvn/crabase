@@ -6,11 +6,13 @@ use app\service\Store;
 use app\service\Auth;
 use app\service\{ProjectAccess, ModelCatalog};
 use app\model\{Job, Chat, Message, Approval, Project, Setting};
-use app\process\LegacyTimer as Timer;
-use app\process\LegacyWorker as Worker;
-use app\process\LegacyConnection as TcpConnection;
-use app\process\LegacyRequest as Request;
 use Crab\Contracts\Log\Logger;
+use Crab\Engine\EventLoop;
+use Crab\Engine\Http\Request;
+use Crab\Engine\Network\WriteResult;
+use Crab\Engine\Process\Worker;
+use Crab\Engine\WebSocket\WebSocketSession;
+use Crab\Http\Request as HttpRequest;
 use Crab\Log\Logger as DefaultLogger;
 
 final class Codex
@@ -28,7 +30,11 @@ final class Codex
     private float $retryAt = 0;
     private float $started = 0;
     private array $clients = [];
-    private ?Worker $worker = null;
+    /** @var array<string, WebSocketSession> */
+    private array $connections = [];
+    private ?EventLoop $loop = null;
+    /** @var array<int, array{read?: string, write?: string}> */
+    private array $watchers = [];
     private bool $bootAttempted = false;
     private mixed $terminalProcess = null;
     private array $terminalPipes = [];
@@ -44,7 +50,7 @@ final class Codex
 
     public function onWorkerStart(Worker $worker): void
     {
-        $this->worker = $worker;
+        $this->loop = $worker->loop;
         Store::db();
         Store::notify(Job::query()->where('status', 'running')->update(['status'=>'failed']));
         Store::notify(Chat::query()->whereIn('status', ['running','approval'])->update(['status'=>'idle']));
@@ -57,17 +63,17 @@ final class Codex
         }
         $this->status('ready');
         \app\service\Attachments::cleanup();
-        Timer::add(3600, fn () => \app\service\Attachments::cleanup());
+        $this->loop->repeat(3600, fn () => \app\service\Attachments::cleanup());
         // One persistent app-server, with independent turns for different chats.
-        Timer::add(0.05, function () {
+        $this->loop->repeat(0.05, function () {
             $this->tick();
             $this->publish();
         });
-        Timer::add(2, function () {
+        $this->loop->repeat(2, function () {
             foreach ($this->clients as $id => $client) {
-                if (!Auth::user($client['token']) && isset($this->worker->connections[$id])) {
-                    $this->reply($this->worker->connections[$id], ['type'=>'unauthorized']);
-                    $this->worker->connections[$id]->close();
+                if (!Auth::user($client['token']) && isset($this->connections[$id])) {
+                    $this->reply($this->connections[$id], ['type'=>'unauthorized']);
+                    $this->connections[$id]->close();
                 }
             }
             // Typing ends without a final packet when a tab closes or sleeps, so expire it here.
@@ -83,22 +89,27 @@ final class Codex
         });
     }
 
-    public function onWebSocketConnect(TcpConnection $connection, Request $request): void
+    public function onWebSocketConnect(WebSocketSession $connection, Request $request): void
     {
-        $host = explode(':', $request->host())[0];
+        $host = explode(':', (string) ($request->header('host') ?? ''))[0];
         if (!Auth::allowedHost($host) || !Auth::allowedOrigin($request->header('origin'))) {
             $connection->close();
             return;
         }
-        $token = $request->cookie(Auth::COOKIE);
+        $token = HttpRequest::fromEngine($request)->cookie(Auth::COOKIE);
         if (!Auth::user($token)) {
             $this->reply($connection, ['type'=>'unauthorized']);
             $connection->close();
             return;
         }
-        $connection->maxSendBufferSize = 8 * 1024 * 1024;
-        $connection->onBufferFull = fn () => $connection->close();
-        $this->clients[$connection->id] = ['token'=>$token, 'chat_id' => null,'state' => null,'thread' => null,'user' => '','typing' => 0.0];
+        $id = $this->connectionId($connection);
+        $this->connections[$id] = $connection;
+        $this->clients[$id] = ['token'=>$token, 'chat_id' => null,'state' => null,'thread' => null,'user' => '','typing' => 0.0];
+    }
+
+    private function connectionId(WebSocketSession $connection): string
+    {
+        return (string) spl_object_id($connection);
     }
 
     // Presence is live connection state only: who has a chat open and who is typing. Nothing is stored.
@@ -113,29 +124,34 @@ final class Codex
         }
         $packet = ['type'=>'presence', 'chat_id'=>$chatId, 'viewers'=>array_values(array_unique($viewers)), 'typing'=>array_values(array_unique($typing))];
         foreach ($this->clients as $id => $client) {
-            if ($client['chat_id'] === $chatId && isset($this->worker->connections[$id])) $this->reply($this->worker->connections[$id], $packet);
+            if ($client['chat_id'] === $chatId && isset($this->connections[$id])) $this->reply($this->connections[$id], $packet);
         }
     }
 
-    private function reply(TcpConnection $connection, array $message): void
+    private function reply(WebSocketSession $connection, array $message): void
     {
-        $connection->send(json_encode($message, JSON_INVALID_UTF8_SUBSTITUTE));
+        $result = $connection->sendText(json_encode($message, JSON_INVALID_UTF8_SUBSTITUTE));
+        if ($result !== WriteResult::Accepted) {
+            $connection->close();
+        }
     }
-    public function onClose(TcpConnection $connection): void
+    public function onClose(WebSocketSession $connection): void
     {
-        $chatId = $this->clients[$connection->id]['chat_id'] ?? null;
-        unset($this->clients[$connection->id]);
+        $id = $this->connectionId($connection);
+        $chatId = $this->clients[$id]['chat_id'] ?? null;
+        unset($this->clients[$id], $this->connections[$id]);
         $this->presence($chatId);
     }
-    public function onMessage(TcpConnection $connection, string $data): void
+    public function onMessage(WebSocketSession $connection, string $data): void
     {
-        if (!isset($this->clients[$connection->id])) {
+        $connectionId = $this->connectionId($connection);
+        if (!isset($this->clients[$connectionId])) {
             $connection->close();
             return;
         }
         $id = null;
         try {
-            $actor = Auth::user($this->clients[$connection->id]['token']);
+            $actor = Auth::user($this->clients[$connectionId]['token']);
             if (!$actor) {
                 $this->reply($connection, ['type'=>'unauthorized']);
                 $connection->close();
@@ -173,17 +189,17 @@ final class Codex
                 $resultThread = $thread;
                 $state = ProjectAccess::snapshot(Store::snapshot(), $actor);
                 $state['pins'] = Store::connection()->table('project_pins')->where('user_id', $actor['id'])->whereIn('project_id', array_column($state['projects'], 'id'))->pluck('project_id');
-                $previous = $this->clients[$connection->id]['chat_id'];
+                $previous = $this->clients[$connectionId]['chat_id'];
                 if ($previous !== $chatId) $presence = [$previous, $chatId];
-                $this->clients[$connection->id] = ['token'=>$this->clients[$connection->id]['token'], 'chat_id' => $chatId,'state' => $state,'thread' => $thread,
-                    'user' => $actor['name'], 'typing' => $previous === $chatId ? $this->clients[$connection->id]['typing'] : 0.0];
+                $this->clients[$connectionId] = ['token'=>$this->clients[$connectionId]['token'], 'chat_id' => $chatId,'state' => $state,'thread' => $thread,
+                    'user' => $actor['name'], 'typing' => $previous === $chatId ? $this->clients[$connectionId]['typing'] : 0.0];
                 $result = ['state' => $state,'thread' => $resultThread,'terminals' => $this->terminalList($chatId)];
             } elseif ($m['action'] === 'typing') {
-                $chatId = $this->clients[$connection->id]['chat_id'];
+                $chatId = $this->clients[$connectionId]['chat_id'];
                 if (!is_bool($m['data']['active'] ?? null)) throw new \InvalidArgumentException('Active must be a boolean.');
                 if (!$chatId || ($m['data']['chat_id'] ?? null) !== $chatId) throw new \InvalidArgumentException('Open this chat before typing in it.');
-                $was = $this->clients[$connection->id]['typing'] > microtime(true);
-                $this->clients[$connection->id]['typing'] = $m['data']['active'] ? microtime(true) + 6 : 0.0;
+                $was = $this->clients[$connectionId]['typing'] > microtime(true);
+                $this->clients[$connectionId]['typing'] = $m['data']['active'] ? microtime(true) + 6 : 0.0;
                 if ($was !== $m['data']['active']) $presence = [$chatId];
                 $result = ['ok' => true];
             } elseif (str_starts_with($m['action'], 'terminal')) {
@@ -232,9 +248,9 @@ final class Codex
         $threads = $revoked = [];
         foreach ($this->clients as $id => &$client) {
             if (!$actor = Auth::user($client['token'])) {
-                if (isset($this->worker->connections[$id])) {
-                    $this->reply($this->worker->connections[$id], ['type'=>'unauthorized']);
-                    $this->worker->connections[$id]->close();
+                if (isset($this->connections[$id])) {
+                    $this->reply($this->connections[$id], ['type'=>'unauthorized']);
+                    $this->connections[$id]->close();
                 }
                 continue;
             }
@@ -281,8 +297,8 @@ final class Codex
                 $client['thread'] = $thread;
             }
             if (isset($patch['state']) || isset($patch['messages']) || isset($patch['append']) || isset($patch['approvals']) || isset($patch['artifacts'])) {
-                if (isset($this->worker->connections[$id])) {
-                    $this->reply($this->worker->connections[$id], $patch);
+                if (isset($this->connections[$id])) {
+                    $this->reply($this->connections[$id], $patch);
                 }
             }
         }
@@ -750,16 +766,24 @@ final class Codex
         }
         $this->shutdown();
         $this->terminalShutdown();
+        foreach ($this->watchers as $watchers) {
+            foreach ($watchers as $id) {
+                $this->loop?->cancel($id);
+            }
+        }
+        $this->watchers = [];
+        $this->loop = null;
         $this->status('offline');
     }
 
-    private function terminalAction(TcpConnection $connection, string $action, array $data): array
+    private function terminalAction(WebSocketSession $connection, string $action, array $data): array
     {
-        $chatId = $this->clients[$connection->id]['chat_id'];
+        $connectionId = $this->connectionId($connection);
+        $chatId = $this->clients[$connectionId]['chat_id'];
         if (!$chatId) {
             throw new \InvalidArgumentException('Open a chat before using the terminal.');
         }
-        $actor = Auth::user($this->clients[$connection->id]['token']);
+        $actor = Auth::user($this->clients[$connectionId]['token']);
         if (!$actor) throw new \InvalidArgumentException('Authentication required.');
         ProjectAccess::chat($actor, $chatId);
         if ($action === 'terminalOpen') {
@@ -851,7 +875,7 @@ final class Codex
             foreach ($this->terminalPipes as $pipe) stream_set_blocking($pipe, false);
             // PTY input/output must not wait for the agent's 50 ms scheduling tick.
             foreach ([1, 2] as $index) {
-                $this->worker?->onReadable($this->terminalPipes[$index], fn () => $this->terminalPump());
+                $this->watchReadable($this->terminalPipes[$index], fn () => $this->terminalPump());
             }
         }
         $this->terminalOutput .= json_encode($message, JSON_INVALID_UTF8_SUBSTITUTE)."\n";
@@ -879,13 +903,13 @@ final class Codex
             $this->terminalOutput = substr($this->terminalOutput, $written);
         }
         if ($this->terminalOutput === '') {
-            $this->worker?->offWritable($this->terminalPipes[0]);
+            $this->unwatchWritable($this->terminalPipes[0]);
         } else {
-            $this->worker?->onWritable($this->terminalPipes[0], fn () => $this->terminalPump());
+            $this->watchWritable($this->terminalPipes[0], fn () => $this->terminalPump());
         }
         $stderr = stream_get_contents($this->terminalPipes[2]);
         if ($stderr) file_put_contents(dirname(__DIR__, 2).'/runtime/logs/terminal.log', $stderr, FILE_APPEND);
-        if (feof($this->terminalPipes[2])) $this->worker?->offReadable($this->terminalPipes[2]);
+        if (feof($this->terminalPipes[2])) $this->unwatchReadable($this->terminalPipes[2]);
         $this->terminalInput .= stream_get_contents($this->terminalPipes[1]);
         while (($end = strpos($this->terminalInput, "\n")) !== false) {
             $line = substr($this->terminalInput, 0, $end);
@@ -915,8 +939,8 @@ final class Codex
     {
         $packet += ['type' => 'terminal','chat_id' => $chatId];
         foreach ($this->clients as $id => $client) {
-            if ($client['chat_id'] === $chatId && isset($this->worker->connections[$id]) && ($actor = Auth::user($client['token'])) && ProjectAccess::canChat($actor, $chatId)) {
-                $this->reply($this->worker->connections[$id], $packet);
+            if ($client['chat_id'] === $chatId && isset($this->connections[$id]) && ($actor = Auth::user($client['token'])) && ProjectAccess::canChat($actor, $chatId)) {
+                $this->reply($this->connections[$id], $packet);
             }
         }
     }
@@ -934,8 +958,8 @@ final class Codex
     private function terminalShutdown(): void
     {
         foreach ($this->terminalPipes as $pipe) if (is_resource($pipe)) {
-            $this->worker?->offReadable($pipe);
-            $this->worker?->offWritable($pipe);
+            $this->unwatchReadable($pipe);
+            $this->unwatchWritable($pipe);
             fclose($pipe);
         }
         if (is_resource($this->terminalProcess)) {
@@ -946,5 +970,51 @@ final class Codex
         $this->terminalPipes = [];
         $this->terminalInput = '';
         $this->terminalOutput = '';
+    }
+
+    private function watchReadable(mixed $stream, callable $callback): void
+    {
+        if ($this->loop === null || !is_resource($stream)) {
+            return;
+        }
+        $key = get_resource_id($stream);
+        $this->unwatchReadable($stream);
+        $this->watchers[$key]['read'] = $this->loop->onReadable($stream, $callback(...));
+    }
+
+    private function watchWritable(mixed $stream, callable $callback): void
+    {
+        if ($this->loop === null || !is_resource($stream)) {
+            return;
+        }
+        $key = get_resource_id($stream);
+        $this->unwatchWritable($stream);
+        $this->watchers[$key]['write'] = $this->loop->onWritable($stream, $callback(...));
+    }
+
+    private function unwatchReadable(mixed $stream): void
+    {
+        $this->cancelWatcher($stream, 'read');
+    }
+
+    private function unwatchWritable(mixed $stream): void
+    {
+        $this->cancelWatcher($stream, 'write');
+    }
+
+    private function cancelWatcher(mixed $stream, string $kind): void
+    {
+        if ($this->loop === null || !is_resource($stream)) {
+            return;
+        }
+        $key = get_resource_id($stream);
+        $id = $this->watchers[$key][$kind] ?? null;
+        if ($id !== null) {
+            $this->loop->cancel($id);
+            unset($this->watchers[$key][$kind]);
+        }
+        if (($this->watchers[$key] ?? []) === []) {
+            unset($this->watchers[$key]);
+        }
     }
 }
