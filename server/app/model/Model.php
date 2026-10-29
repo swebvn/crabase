@@ -318,4 +318,3 @@ final class ModelQuery
     }
 
 }
-
