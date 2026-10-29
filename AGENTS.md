@@ -1,6 +1,6 @@
 # Crabase agent instructions
 
-Crabase is a local shared workspace: React/Vite frontend, PHP Webman/Workerman backend, SQLite, and a persistent `codex app-server` worker.
+Crabase is a local shared workspace: React/Vite frontend, PHP CrabPHP backend, SQLite, and a persistent `codex app-server` worker.
 
 ## Commands
 
@@ -17,7 +17,7 @@ Crabase is a local shared workspace: React/Vite frontend, PHP Webman/Workerman b
 
 - Keep browser workspace traffic on the existing WebSocket protocol (`{id, action, data}` and `patch` events); do not reintroduce polling or GET/POST refresh loops.
 - Keep SQLite writes prepared, short, and compatible with WAL mode and foreign keys.
-- Use Eloquent models for domain queries and writes. Keep `Store` for connection setup, validation, snapshots and revision notifications, not new raw CRUD. Notify after visible writes (`Store::notify($affectedRows)` for bulk updates); model/builder writes do not notify automatically. Keep bound SQL only for atomic operations the ORM cannot express safely, and document why. Never read/modify/save streamed message bodies; use `Message::appendBody`.
+- Use the `app\model` classes (Crab query builder) for domain queries and writes; map casts and hidden fields explicitly and write relations as explicit queries in transactions. Keep `Store` for connection setup, validation, snapshots and revision notifications, not new raw CRUD. Notify after visible writes (`Store::notify($affectedRows)` for bulk updates); model/builder writes do not notify automatically. Keep bound SQL only for atomic operations the query builder cannot express safely, and document why. Never read/modify/save streamed message bodies; use `Message::appendBody`.
 - Validate untrusted paths, message text, model names, reasoning levels, origins, and command inputs at the backend boundary.
 - Do not require email verification for TDA Passport login; accept the provider email after validating its format.
 - The Codex worker is persistent and owns the single shared agent queue. Do not spawn a new Codex process per message.
