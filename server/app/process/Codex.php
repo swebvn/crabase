@@ -4,15 +4,19 @@ namespace app\process;
 
 use app\service\Store;
 use app\service\Auth;
-use app\service\{ProjectAccess, ModelCatalog};
-use app\model\{Job, Chat, Message, Approval, Setting};
-use Workerman\Timer;
-use Workerman\Worker;
-use Workerman\Connection\TcpConnection;
-use Workerman\Protocols\Http\Request;
+use app\service\{Input, ProjectAccess, ModelCatalog};
+use Crab\Contracts\Log\Logger;
+use Crab\Engine\EventLoop;
+use Crab\Engine\Http\Request;
+use Crab\Engine\Network\WriteResult;
+use Crab\Engine\Process\Worker;
+use Crab\Engine\WebSocket\WebSocketSession;
+use Crab\Http\Request as HttpRequest;
+use Crab\Log\Logger as DefaultLogger;
 
 final class Codex
 {
+    private readonly Logger $logger;
     private mixed $process = null;
     private array $pipes = [];
     private array $pending = [];
@@ -25,7 +29,11 @@ final class Codex
     private float $retryAt = 0;
     private float $started = 0;
     private array $clients = [];
-    private ?Worker $worker = null;
+    /** @var array<string, WebSocketSession> */
+    private array $connections = [];
+    private ?EventLoop $loop = null;
+    /** @var array<int, array{read?: string, write?: string}> */
+    private array $watchers = [];
     private bool $bootAttempted = false;
     private mixed $terminalProcess = null;
     private array $terminalPipes = [];
@@ -34,32 +42,38 @@ final class Codex
     private array $terminals = [];
     private int $terminalSequence = 0;
 
+    public function __construct(?Logger $logger = null)
+    {
+        $this->logger = $logger ?? new DefaultLogger();
+    }
+
     public function onWorkerStart(Worker $worker): void
     {
-        $this->worker = $worker;
+        $this->loop = $worker->loop;
         Store::db();
-        Store::notify(Job::query()->where('status', 'running')->update(['status'=>'failed']));
-        Store::notify(Chat::query()->whereIn('status', ['running','approval'])->update(['status'=>'idle']));
-        Store::notify(Approval::query()->whereNull('decision')->update(['decision'=>'decline']));
-        foreach (Message::query()->where('role', 'agent_activity')->get(['id','body']) as $row) {
+        $db = Store::connection();
+        Store::notify($db->table('jobs')->where('status', 'running')->update(['status'=>'failed']));
+        Store::notify($db->table('chats')->whereIn('status', ['running','approval'])->update(['status'=>'idle']));
+        Store::notify($db->table('approvals')->whereNull('decision')->update(['decision'=>'decline']));
+        foreach ($db->table('messages')->where('role', 'agent_activity')->select('id','body')->get() as $row) {
             $activity = json_decode($row['body'], true);
             if (!empty($activity['active'])) {
-                Store::notify($row->update(['body'=>json_encode(\app\service\AgentActivity::finish($activity), JSON_INVALID_UTF8_SUBSTITUTE)]));
+                Store::notify($db->table('messages')->where('id', $row['id'])->update(['body'=>json_encode(\app\service\AgentActivity::finish($activity), JSON_INVALID_UTF8_SUBSTITUTE)]));
             }
         }
         $this->status('ready');
         \app\service\Attachments::cleanup();
-        Timer::add(3600, fn () => \app\service\Attachments::cleanup());
+        $this->loop->repeat(3600, fn () => \app\service\Attachments::cleanup());
         // One persistent app-server, with independent turns for different chats.
-        Timer::add(0.05, function () {
+        $this->loop->repeat(0.05, function () {
             $this->tick();
             $this->publish();
         });
-        Timer::add(2, function () {
+        $this->loop->repeat(2, function () {
             foreach ($this->clients as $id => $client) {
-                if (!Auth::user($client['token']) && isset($this->worker->connections[$id])) {
-                    $this->reply($this->worker->connections[$id], ['type'=>'unauthorized']);
-                    $this->worker->connections[$id]->close();
+                if (!Auth::user($client['token']) && isset($this->connections[$id])) {
+                    $this->reply($this->connections[$id], ['type'=>'unauthorized']);
+                    $this->connections[$id]->close();
                 }
             }
             // Typing ends without a final packet when a tab closes or sleeps, so expire it here.
@@ -75,22 +89,27 @@ final class Codex
         });
     }
 
-    public function onWebSocketConnect(TcpConnection $connection, Request $request): void
+    public function onWebSocketConnect(WebSocketSession $connection, Request $request): void
     {
-        $host = explode(':', $request->host())[0];
+        $host = explode(':', (string) ($request->header('host') ?? ''))[0];
         if (!Auth::allowedHost($host) || !Auth::allowedOrigin($request->header('origin'))) {
             $connection->close();
             return;
         }
-        $token = $request->cookie(Auth::COOKIE);
+        $token = HttpRequest::fromEngine($request)->cookie(Auth::COOKIE);
         if (!Auth::user($token)) {
             $this->reply($connection, ['type'=>'unauthorized']);
             $connection->close();
             return;
         }
-        $connection->maxSendBufferSize = 8 * 1024 * 1024;
-        $connection->onBufferFull = fn () => $connection->close();
-        $this->clients[$connection->id] = ['token'=>$token, 'chat_id' => null,'state' => null,'thread' => null,'user' => '','typing' => 0.0];
+        $id = $this->connectionId($connection);
+        $this->connections[$id] = $connection;
+        $this->clients[$id] = ['token'=>$token, 'chat_id' => null,'state' => null,'thread' => null,'user' => '','typing' => 0.0];
+    }
+
+    private function connectionId(WebSocketSession $connection): string
+    {
+        return (string) spl_object_id($connection);
     }
 
     // Presence is live connection state only: who has a chat open and who is typing. Nothing is stored.
@@ -105,29 +124,34 @@ final class Codex
         }
         $packet = ['type'=>'presence', 'chat_id'=>$chatId, 'viewers'=>array_values(array_unique($viewers)), 'typing'=>array_values(array_unique($typing))];
         foreach ($this->clients as $id => $client) {
-            if ($client['chat_id'] === $chatId && isset($this->worker->connections[$id])) $this->reply($this->worker->connections[$id], $packet);
+            if ($client['chat_id'] === $chatId && isset($this->connections[$id])) $this->reply($this->connections[$id], $packet);
         }
     }
 
-    private function reply(TcpConnection $connection, array $message): void
+    private function reply(WebSocketSession $connection, array $message): void
     {
-        $connection->send(json_encode($message, JSON_INVALID_UTF8_SUBSTITUTE));
+        $result = $connection->sendText(json_encode($message, JSON_INVALID_UTF8_SUBSTITUTE));
+        if ($result !== WriteResult::Accepted) {
+            $connection->close();
+        }
     }
-    public function onClose(TcpConnection $connection): void
+    public function onClose(WebSocketSession $connection): void
     {
-        $chatId = $this->clients[$connection->id]['chat_id'] ?? null;
-        unset($this->clients[$connection->id]);
+        $id = $this->connectionId($connection);
+        $chatId = $this->clients[$id]['chat_id'] ?? null;
+        unset($this->clients[$id], $this->connections[$id]);
         $this->presence($chatId);
     }
-    public function onMessage(TcpConnection $connection, string $data): void
+    public function onMessage(WebSocketSession $connection, string $data): void
     {
-        if (!isset($this->clients[$connection->id])) {
+        $connectionId = $this->connectionId($connection);
+        if (!isset($this->clients[$connectionId])) {
             $connection->close();
             return;
         }
         $id = null;
         try {
-            $actor = Auth::user($this->clients[$connection->id]['token']);
+            $actor = Auth::user($this->clients[$connectionId]['token']);
             if (!$actor) {
                 $this->reply($connection, ['type'=>'unauthorized']);
                 $connection->close();
@@ -142,8 +166,8 @@ final class Codex
             }
             $id = $m['id'];
             $presence = [];
-            if (!empty($m['data']['project_id'])) ProjectAccess::project($actor, Store::text($m['data']['project_id'], 64));
-            if (!empty($m['data']['chat_id'])) ProjectAccess::chat($actor, Store::text($m['data']['chat_id'], 64));
+            if (!empty($m['data']['project_id'])) ProjectAccess::project($actor, Input::text($m['data']['project_id'], 64));
+            if (!empty($m['data']['chat_id'])) ProjectAccess::chat($actor, Input::text($m['data']['chat_id'], 64));
             if ($m['action'] === 'models') {
                 if (!$this->process) {
                     $this->boot();
@@ -152,7 +176,7 @@ final class Codex
                 }
                 $result = ['ok' => true];
             } elseif ($m['action'] === 'sync') {
-                $chatId = empty($m['data']['chat_id']) ? null : Store::text($m['data']['chat_id'], 64);
+                $chatId = empty($m['data']['chat_id']) ? null : Input::text($m['data']['chat_id'], 64);
                 $after = $m['data']['after'] ?? null;
                 $before = $m['data']['before'] ?? null;
                 $limit = $m['data']['limit'] ?? 150;
@@ -164,18 +188,18 @@ final class Codex
                 $thread = $chatId ? Store::threadPage($chatId, $before, $after, $limit) : null;
                 $resultThread = $thread;
                 $state = ProjectAccess::snapshot(Store::snapshot(), $actor);
-                $state['pins'] = \app\model\User::findOrFail($actor['id'])->pinnedProjects()->whereIn('projects.id', array_column($state['projects'], 'id'))->pluck('projects.id')->all();
-                $previous = $this->clients[$connection->id]['chat_id'];
+                $state['pins'] = Store::connection()->table('project_pins')->where('user_id', $actor['id'])->whereIn('project_id', array_column($state['projects'], 'id'))->pluck('project_id');
+                $previous = $this->clients[$connectionId]['chat_id'];
                 if ($previous !== $chatId) $presence = [$previous, $chatId];
-                $this->clients[$connection->id] = ['token'=>$this->clients[$connection->id]['token'], 'chat_id' => $chatId,'state' => $state,'thread' => $thread,
-                    'user' => $actor['name'], 'typing' => $previous === $chatId ? $this->clients[$connection->id]['typing'] : 0.0];
+                $this->clients[$connectionId] = ['token'=>$this->clients[$connectionId]['token'], 'chat_id' => $chatId,'state' => $state,'thread' => $thread,
+                    'user' => $actor['name'], 'typing' => $previous === $chatId ? $this->clients[$connectionId]['typing'] : 0.0];
                 $result = ['state' => $state,'thread' => $resultThread,'terminals' => $this->terminalList($chatId)];
             } elseif ($m['action'] === 'typing') {
-                $chatId = $this->clients[$connection->id]['chat_id'];
+                $chatId = $this->clients[$connectionId]['chat_id'];
                 if (!is_bool($m['data']['active'] ?? null)) throw new \InvalidArgumentException('Active must be a boolean.');
                 if (!$chatId || ($m['data']['chat_id'] ?? null) !== $chatId) throw new \InvalidArgumentException('Open this chat before typing in it.');
-                $was = $this->clients[$connection->id]['typing'] > microtime(true);
-                $this->clients[$connection->id]['typing'] = $m['data']['active'] ? microtime(true) + 6 : 0.0;
+                $was = $this->clients[$connectionId]['typing'] > microtime(true);
+                $this->clients[$connectionId]['typing'] = $m['data']['active'] ? microtime(true) + 6 : 0.0;
                 if ($was !== $m['data']['active']) $presence = [$chatId];
                 $result = ['ok' => true];
             } elseif (str_starts_with($m['action'], 'terminal')) {
@@ -183,7 +207,7 @@ final class Codex
             } else {
                 $m['data']['user_id'] = $actor['id'];
                 if ($m['action'] === 'projectDelete') {
-                    $chatIds = Chat::query()->where('project_id', Store::text($m['data']['project_id'] ?? null, 64))->pluck('id')->all();
+                    $chatIds = Store::connection()->table('chats')->where('project_id', Input::text($m['data']['project_id'] ?? null, 64))->pluck('id');
                     foreach ($this->terminals as $terminal) {
                         if ($terminal['running'] && in_array($terminal['chat_id'], $chatIds, true)) throw new \InvalidArgumentException('Close this workspace’s terminals before deleting it.');
                     }
@@ -208,14 +232,14 @@ final class Codex
         } catch (\InvalidArgumentException|\JsonException $e) {
             $this->reply($connection, ['id' => $id,'error' => $e->getMessage()]);
         } catch (\Throwable $e) {
-            error_log((string)$e);
+            $this->logger->error('Codex request failed.', ['exception' => $e]);
             $this->reply($connection, ['id' => $id,'error' => 'Unable to save changes. Please try again.']);
         }
     }
     // ponytail: compare subscribed history rows; use database cursors if long histories make this slow.
     private function publish(): void
     {
-        $revision = Setting::query()->whereKey('revision')->value('value') ?? '';
+        $revision = Store::connection()->table('settings')->where('key', 'revision')->value('value') ?? '';
         if ($revision === $this->revision) {
             return;
         }
@@ -224,9 +248,9 @@ final class Codex
         $threads = $revoked = [];
         foreach ($this->clients as $id => &$client) {
             if (!$actor = Auth::user($client['token'])) {
-                if (isset($this->worker->connections[$id])) {
-                    $this->reply($this->worker->connections[$id], ['type'=>'unauthorized']);
-                    $this->worker->connections[$id]->close();
+                if (isset($this->connections[$id])) {
+                    $this->reply($this->connections[$id], ['type'=>'unauthorized']);
+                    $this->connections[$id]->close();
                 }
                 continue;
             }
@@ -234,7 +258,7 @@ final class Codex
                 continue;
             }
             $state = ProjectAccess::snapshot($snapshot, $actor);
-            $state['pins'] = \app\model\User::findOrFail($actor['id'])->pinnedProjects()->whereIn('projects.id', array_column($state['projects'], 'id'))->pluck('projects.id')->all();
+            $state['pins'] = Store::connection()->table('project_pins')->where('user_id', $actor['id'])->whereIn('project_id', array_column($state['projects'], 'id'))->pluck('project_id');
             $patch = ['type' => 'patch'];
             foreach ($state as $key => $value) {
                 if ($value !== $client['state'][$key]) {
@@ -273,8 +297,8 @@ final class Codex
                 $client['thread'] = $thread;
             }
             if (isset($patch['state']) || isset($patch['messages']) || isset($patch['append']) || isset($patch['approvals']) || isset($patch['artifacts'])) {
-                if (isset($this->worker->connections[$id])) {
-                    $this->reply($this->worker->connections[$id], $patch);
+                if (isset($this->connections[$id])) {
+                    $this->reply($this->connections[$id], $patch);
                 }
             }
         }
@@ -289,10 +313,11 @@ final class Codex
         $checks[] = ['name'=>'Codex app-server', 'status'=>$running && $this->ready ? 'ok' : 'warning',
             'detail'=>$running ? ($this->ready ? 'Initialized and running' : 'Starting; not ready yet') : ($this->bootAttempted ? 'Not running' : 'Not started yet')];
         try {
+            $db = Store::connection();
             $models = ModelCatalog::all();
             $checks[] = ['name'=>'Database', 'status'=>'ok', 'detail'=>'Read query succeeded'];
             $checks[] = ['name'=>'Models', 'status'=>$models ? 'ok' : 'warning', 'detail'=>count($models).' models in memory; refreshes every 30 minutes'];
-            $checks[] = ['name'=>'Agent queue', 'status'=>'ok', 'detail'=>Job::query()->where('status', 'running')->count().' running · '.Job::query()->where('status', 'queued')->count().' queued'];
+            $checks[] = ['name'=>'Agent queue', 'status'=>'ok', 'detail'=>$db->table('jobs')->where('status', 'running')->count().' running · '.$db->table('jobs')->where('status', 'queued')->count().' queued'];
         } catch (\Throwable) {
             $checks[] = ['name'=>'Database', 'status'=>'error', 'detail'=>'Unable to read database'];
         }
@@ -310,7 +335,7 @@ final class Codex
 
     private function status(string $value): void
     {
-        Setting::put('runtime', $value);
+        Store::notify(Store::connection()->table('settings')->upsert([['key' => 'runtime', 'value' => $value]], ['key'], ['value']));
     }
     private function send(array $message): void
     {
@@ -404,25 +429,28 @@ final class Codex
             }
             foreach (array_keys($this->jobs) as $jobId) {
                 foreach ($this->jobs[$jobId]['approvals'] as $approvalId => $rpcId) {
-                    $decision = Approval::query()->whereKey($approvalId)->value('decision');
+                    $decision = Store::connection()->table('approvals')->where('id', $approvalId)->value('decision');
                     if ($decision) {
                         $this->send(['id' => $rpcId,'result' => ['decision' => $decision]]);
                         unset($this->jobs[$jobId]['approvals'][$approvalId]);
                         if (!$this->jobs[$jobId]['approvals']) {
-                            Store::notify(Chat::query()->whereKey($this->jobs[$jobId]['chat_id'])->update(['status'=>'running']));
+                            Store::notify(Store::connection()->table('chats')->where('id', $this->jobs[$jobId]['chat_id'])->update(['status'=>'running']));
                         }
                     }
                 }
-                $row = Job::query()->findOrFail($jobId, ['cancel','turn_id']);
+                $row = Store::connection()->table('jobs')->where('id', $jobId)->select('cancel','turn_id')->first();
+                if (!$row) throw new \RuntimeException('Queued job disappeared.');
                 if ($row['cancel'] && !empty($row['turn_id']) && empty($this->jobs[$jobId]['interrupting'])) {
                     $this->jobs[$jobId]['interrupting'] = true;
                     $this->rpc('turn/interrupt', ['threadId' => $this->jobs[$jobId]['thread_id'],'turnId' => $row['turn_id']], fn ($result) => null, $jobId);
                 }
             }
             $this->steerActiveJobs();
-            Store::notify(Job::query()->where('status', 'queued')->where('cancel', 1)->update(['status'=>'cancelled']));
-            Store::notify(Chat::query()->where('status', 'queued')
-                ->whereDoesntHave('jobs', fn ($query) => $query->whereIn('status', ['queued','running']))->update(['status'=>'idle']));
+            Store::notify(Store::connection()->table('jobs')->where('status', 'queued')->where('cancel', 1)->update(['status'=>'cancelled']));
+            $active = Store::connection()->table('jobs')->selectRaw('1')
+                ->whereColumn('jobs.chat_id', 'chats.id')->whereIn('jobs.status', ['queued', 'running']);
+            Store::notify(Store::connection()->table('chats')->where('status', 'queued')
+                ->whereNotExists($active)->update(['status'=>'idle']));
             $limit = (require dirname(__DIR__, 2).'/config/crabase.php')['parallel_chats'];
             if (count($this->jobs) >= $limit) {
                 return;
@@ -451,13 +479,19 @@ final class Codex
             $this->shutdown();
             $this->retryAt = microtime(true) + 5;
             $this->status('error');
-            error_log('Crabase: '.$error->getMessage());
+            $this->logger->error('Crabase worker failed.', ['message' => $error->getMessage(), 'exception' => $error]);
         }
     }
 
     private function nextJobs(int $limit): array
     {
-        return Job::nextQueued($limit);
+        $db = Store::connection();
+        $active = $db->table('jobs as active')->selectRaw('1')->whereColumn('active.chat_id', 'j.chat_id')->where('active.status', 'running');
+        $earlier = $db->table('jobs as earlier')->selectRaw('1')->whereColumn('earlier.chat_id', 'j.chat_id')->where('earlier.status', 'queued')->where('earlier.cancel', 0)->whereColumn('earlier.id', '<', 'j.id');
+        return $db->table('jobs as j')->select('j.*', 'c.thread_id', 'p.path')
+            ->join('chats as c', 'c.id', '=', 'j.chat_id')->leftJoin('projects as p', 'p.id', '=', 'c.project_id')
+            ->where('j.status', 'queued')->where('j.cancel', 0)->whereNotExists($active)->whereNotExists($earlier)
+            ->orderBy('j.id')->limit($limit)->get();
     }
 
     private function steerActiveJobs(): void
@@ -468,8 +502,8 @@ final class Codex
                 unset($active);
                 continue;
             }
-            $next = Job::query()->where('chat_id', $active['chat_id'])->where('status', 'queued')
-                ->where('cancel', 0)->whereNotNull('message_id')->orderBy('id')->first()?->toArray();
+            $next = Store::connection()->table('jobs')->where('chat_id', $active['chat_id'])->where('status', 'queued')
+                ->where('cancel', 0)->whereNotNull('message_id')->orderBy('id')->first();
             if (!$next) {
                 unset($active);
                 continue;
@@ -483,7 +517,7 @@ final class Codex
                 ], \app\service\Attachments::input($next)),
             ], function () use ($activeId, $next) {
                 if (!isset($this->jobs[$activeId])) return;
-                Store::notify(Job::query()->whereKey($next['id'])->update(['status'=>'done']));
+                Store::notify(Store::connection()->table('jobs')->where('id', $next['id'])->update(['status'=>'done']));
                 Store::event($next['chat_id'], Store::agentName().' received a steering message');
                 $this->jobs[$activeId]['steering'] = false;
             }, $activeId, (int)$next['id']);
@@ -495,11 +529,12 @@ final class Codex
     {
         $jobId = (int)$next['id'];
         $this->jobs[$jobId] = $next + ['items' => [], 'approvals' => [], 'activity' => []];
-        Store::notify(Job::query()->whereKey($jobId)->update(['status'=>'running']));
-        Store::notify(Chat::query()->whereKey($next['chat_id'])->update(['status'=>'running']));
+        Store::notify(Store::connection()->table('jobs')->where('id', $jobId)->update(['status'=>'running']));
+        Store::notify(Store::connection()->table('chats')->where('id', $next['chat_id'])->update(['status'=>'running']));
         try {
-            $project = Chat::query()->find($next['chat_id'])?->project;
-            if ($project?->parent_id) $next['path'] = $project->workspacePath();
+            $chat = Store::connection()->table('chats')->where('id', $next['chat_id'])->first();
+            $project = $chat && $chat['project_id'] ? Store::connection()->table('projects')->where('id', $chat['project_id'])->first() : null;
+            if ($project && $project['parent_id']) $next['path'] = \app\service\ProjectWorkspace::workspacePath($project);
             if (!$next['path']) {
                 $workspaceRoot = realpath(config('crabase.workspace_root'));
                 if (!$workspaceRoot || !is_dir($workspaceRoot)) throw new \RuntimeException('Workspace folder is unavailable.');
@@ -525,8 +560,8 @@ final class Codex
                 }
                 $thread = $result['thread']['id'];
                 $this->jobs[$jobId]['thread_id'] = $thread;
-                Store::notify(Chat::query()->whereKey($this->jobs[$jobId]['chat_id'])->update(['thread_id'=>$thread]));
-                if (Job::query()->whereKey($jobId)->value('cancel')) {
+                Store::notify(Store::connection()->table('chats')->where('id', $this->jobs[$jobId]['chat_id'])->update(['thread_id'=>$thread]));
+                if (Store::connection()->table('jobs')->where('id', $jobId)->value('cancel')) {
                     $this->finish($jobId, 'cancelled');
                     return;
                 }
@@ -543,7 +578,7 @@ final class Codex
                         return;
                     }
                     $this->jobs[$jobId]['turn_id'] = $result['turn']['id'];
-                    Store::notify(Job::query()->whereKey($jobId)->update(['turn_id'=>$result['turn']['id']]));
+                    Store::notify(Store::connection()->table('jobs')->where('id', $jobId)->update(['turn_id'=>$result['turn']['id']]));
                 }, $jobId);
             }, $jobId);
         } catch (\Throwable $error) {
@@ -577,7 +612,7 @@ final class Codex
                 $error = $m['error']['message'] ?? 'Codex request failed.';
                 if ($pending['method'] === 'turn/steer') {
                     if ($pending['related_job_id'] !== null) {
-                        Store::notify(Job::query()->whereKey($pending['related_job_id'])->update(['status'=>'failed']));
+                        Store::notify(Store::connection()->table('jobs')->where('id', $pending['related_job_id'])->update(['status'=>'failed']));
                     }
                     if ($jobId !== null && isset($this->jobs[$jobId])) {
                         $this->jobs[$jobId]['steering'] = false;
@@ -613,10 +648,10 @@ final class Codex
                     $this->jobs[$jobId]['activity']['agents'][$agentId]['status'] = 'waiting';
                     $this->saveAgentActivity($jobId);
                 }
-                $id = Approval::query()->create(['chat_id'=>$this->jobs[$jobId]['chat_id'], 'rpc_id'=>json_encode($m['id']), 'method'=>$m['method'], 'details'=>json_encode($m['params'], JSON_INVALID_UTF8_SUBSTITUTE)])->id;
+                $id = Store::connection()->table('approvals')->insert(['chat_id'=>$this->jobs[$jobId]['chat_id'], 'rpc_id'=>json_encode($m['id']), 'method'=>$m['method'], 'details'=>json_encode($m['params'], JSON_INVALID_UTF8_SUBSTITUTE)]);
                 Store::notify();
                 $this->jobs[$jobId]['approvals'][$id] = $m['id'];
-                Store::notify(Chat::query()->whereKey($this->jobs[$jobId]['chat_id'])->update(['status'=>'approval']));
+                Store::notify(Store::connection()->table('chats')->where('id', $this->jobs[$jobId]['chat_id'])->update(['status'=>'approval']));
             } else {
                 $this->send(['id' => $m['id'],'error' => ['code' => -32601,'message' => 'This client does not support this interaction yet.']]);
             }
@@ -638,7 +673,7 @@ final class Codex
                 return;
             }
             $this->jobs[$jobId]['turn_id'] = $p['turn']['id'];
-            Store::notify(Job::query()->whereKey($jobId)->update(['turn_id'=>$p['turn']['id']]));
+            Store::notify(Store::connection()->table('jobs')->where('id', $jobId)->update(['turn_id'=>$p['turn']['id']]));
         }
         $eventTurn = $p['turnId'] ?? $p['turn']['id'] ?? null;
         if ($eventTurn !== null && $eventTurn !== ($this->jobs[$jobId]['turn_id'] ?? null)) {
@@ -646,7 +681,7 @@ final class Codex
         }
         if (($m['method'] ?? '') === 'item/agentMessage/delta') {
             $id = $this->item($jobId, $p['itemId'], 'assistant', Store::agentName(), '');
-            Message::appendBody($id, $p['delta']);
+            \app\service\MessageBody::append($id, $p['delta']);
         }
         if (in_array($m['method'] ?? '', ['item/started','item/completed'])) {
             $item = $p['item'];
@@ -657,12 +692,12 @@ final class Codex
             }
             if ($type === 'agentMessage' && isset($item['text'])) {
                 $id = $this->item($jobId, $item['id'], 'assistant', Store::agentName(), '');
-                Store::notify(Message::query()->whereKey($id)->update(['body'=>$item['text']]));
+                Store::notify(Store::connection()->table('messages')->where('id', $id)->update(['body'=>$item['text']]));
             }
             if ($type === 'commandExecution') {
                 $body = ($item['command'] ?? 'Command') . "\n" . substr($item['aggregatedOutput'] ?? '', -16000);
                 $id = $this->item($jobId, $item['id'], 'tool', 'Terminal', $body);
-                Store::notify(Message::query()->whereKey($id)->update(['body'=>$body]));
+                Store::notify(Store::connection()->table('messages')->where('id', $id)->update(['body'=>$body]));
             }
             if ($type === 'fileChange') {
                 $body = implode("\n", array_map(fn ($c) => $c['path'] ?? 'File changed', $item['changes'] ?? []));
@@ -680,12 +715,12 @@ final class Codex
             return;
         }
         $id = $this->item($jobId, 'agent-activity', 'agent_activity', Store::agentName(), '');
-        Store::notify(Message::query()->whereKey($id)->update(['body'=>json_encode($this->jobs[$jobId]['activity'], JSON_INVALID_UTF8_SUBSTITUTE)]));
+        Store::notify(Store::connection()->table('messages')->where('id', $id)->update(['body'=>json_encode($this->jobs[$jobId]['activity'], JSON_INVALID_UTF8_SUBSTITUTE)]));
     }
     private function item(int $jobId, string $key, string $role, string $author, string $body): int
     {
         if (!isset($this->jobs[$jobId]['items'][$key])) {
-            $this->jobs[$jobId]['items'][$key] = Message::query()->create(['chat_id'=>$this->jobs[$jobId]['chat_id'], 'role'=>$role, 'author'=>$author, 'body'=>$body, 'created_at'=>gmdate('c')])->id;
+            $this->jobs[$jobId]['items'][$key] = Store::connection()->table('messages')->insert(['chat_id'=>$this->jobs[$jobId]['chat_id'], 'role'=>$role, 'author'=>$author, 'body'=>$body, 'created_at'=>gmdate('c')]);
             Store::notify();
         }
         return $this->jobs[$jobId]['items'][$key];
@@ -700,10 +735,10 @@ final class Codex
         if ($error) {
             $this->item($jobId, 'error-'.microtime(true), 'error', Store::agentName(), $error);
         }
-        Store::notify(Job::query()->whereKey($jobId)->update(['status'=>$status]));
-        $queued = Job::query()->where('chat_id', $chat)->where('status', 'queued')->exists();
-        Store::notify(Chat::query()->whereKey($chat)->update(['status'=>$queued ? 'queued' : 'idle', 'updated_at'=>gmdate('c')]));
-        Store::notify(Approval::query()->where('chat_id', $chat)->whereNull('decision')->update(['decision'=>'decline']));
+        Store::notify(Store::connection()->table('jobs')->where('id', $jobId)->update(['status'=>$status]));
+        $queued = Store::connection()->table('jobs')->where('chat_id', $chat)->where('status', 'queued')->exists();
+        Store::notify(Store::connection()->table('chats')->where('id', $chat)->update(['status'=>$queued ? 'queued' : 'idle', 'updated_at'=>gmdate('c')]));
+        Store::notify(Store::connection()->table('approvals')->where('chat_id', $chat)->whereNull('decision')->update(['decision'=>'decline']));
         Store::event($chat, Store::agentName().' turn '.$status);
         foreach ($this->jobs[$jobId]['approvals'] as $rpcId) {
             $this->send(['id' => $rpcId,'result' => ['decision' => 'decline']]);
@@ -740,31 +775,40 @@ final class Codex
         }
         $this->shutdown();
         $this->terminalShutdown();
+        foreach ($this->watchers as $watchers) {
+            foreach ($watchers as $id) {
+                $this->loop?->cancel($id);
+            }
+        }
+        $this->watchers = [];
+        $this->loop = null;
         $this->status('offline');
     }
 
-    private function terminalAction(TcpConnection $connection, string $action, array $data): array
+    private function terminalAction(WebSocketSession $connection, string $action, array $data): array
     {
-        $chatId = $this->clients[$connection->id]['chat_id'];
+        $connectionId = $this->connectionId($connection);
+        $chatId = $this->clients[$connectionId]['chat_id'];
         if (!$chatId) {
             throw new \InvalidArgumentException('Open a chat before using the terminal.');
         }
-        $actor = Auth::user($this->clients[$connection->id]['token']);
+        $actor = Auth::user($this->clients[$connectionId]['token']);
         if (!$actor) throw new \InvalidArgumentException('Authentication required.');
         ProjectAccess::chat($actor, $chatId);
         if ($action === 'terminalOpen') {
-            $row = Chat::query()->with('project')->find($chatId);
+            $row = Store::connection()->table('chats')->where('id', $chatId)->first();
             if (!$row) {
                 throw new \InvalidArgumentException('Conversation not found.');
             }
-            $path = $row->project?->workspacePath();
+            $project = $row['project_id'] === null ? null : Store::connection()->table('projects')->where('id', $row['project_id'])->first();
+            $path = $project && $project['parent_id'] ? \app\service\ProjectWorkspace::workspacePath($project) : ($project ? \app\service\WorkspaceFolders::resolve($project['path']) : null);
             if (!$path) {
                 $workspaceRoot = realpath(config('crabase.workspace_root'));
                 if (!$workspaceRoot || !is_dir($workspaceRoot)) throw new \RuntimeException('Workspace folder is unavailable.');
                 $path = $workspaceRoot.'/.chats/'.$chatId;
             }
             $cwd = $path;
-            if (!$row->project && !is_dir($cwd) && !mkdir($cwd, 0700, true) && !is_dir($cwd)) {
+            if ($project === null && !is_dir($cwd) && !mkdir($cwd, 0700, true) && !is_dir($cwd)) {
                 throw new \RuntimeException('Could not create the chat directory.');
             }
             $cwd = realpath($cwd);
@@ -783,7 +827,7 @@ final class Codex
             $this->terminalBroadcast($chatId, ['event' => 'opened','terminal' => $this->terminals[$id]]);
             return ['terminal' => $this->terminals[$id]];
         }
-        $id = Store::text($data['terminal_id'] ?? null, 64);
+        $id = Input::text($data['terminal_id'] ?? null, 64);
         $terminal = $this->terminals[$id] ?? null;
         if (!$terminal || $terminal['chat_id'] !== $chatId) {
             throw new \InvalidArgumentException('Terminal not found.');
@@ -840,7 +884,7 @@ final class Codex
             foreach ($this->terminalPipes as $pipe) stream_set_blocking($pipe, false);
             // PTY input/output must not wait for the agent's 50 ms scheduling tick.
             foreach ([1, 2] as $index) {
-                Worker::$globalEvent?->onReadable($this->terminalPipes[$index], fn () => $this->terminalPump());
+                $this->watchReadable($this->terminalPipes[$index], fn () => $this->terminalPump());
             }
         }
         $this->terminalOutput .= json_encode($message, JSON_INVALID_UTF8_SUBSTITUTE)."\n";
@@ -868,13 +912,13 @@ final class Codex
             $this->terminalOutput = substr($this->terminalOutput, $written);
         }
         if ($this->terminalOutput === '') {
-            Worker::$globalEvent?->offWritable($this->terminalPipes[0]);
+            $this->unwatchWritable($this->terminalPipes[0]);
         } else {
-            Worker::$globalEvent?->onWritable($this->terminalPipes[0], fn () => $this->terminalPump());
+            $this->watchWritable($this->terminalPipes[0], fn () => $this->terminalPump());
         }
         $stderr = stream_get_contents($this->terminalPipes[2]);
         if ($stderr) file_put_contents(dirname(__DIR__, 2).'/runtime/logs/terminal.log', $stderr, FILE_APPEND);
-        if (feof($this->terminalPipes[2])) Worker::$globalEvent?->offReadable($this->terminalPipes[2]);
+        if (feof($this->terminalPipes[2])) $this->unwatchReadable($this->terminalPipes[2]);
         $this->terminalInput .= stream_get_contents($this->terminalPipes[1]);
         while (($end = strpos($this->terminalInput, "\n")) !== false) {
             $line = substr($this->terminalInput, 0, $end);
@@ -904,8 +948,8 @@ final class Codex
     {
         $packet += ['type' => 'terminal','chat_id' => $chatId];
         foreach ($this->clients as $id => $client) {
-            if ($client['chat_id'] === $chatId && isset($this->worker->connections[$id]) && ($actor = Auth::user($client['token'])) && ProjectAccess::canChat($actor, $chatId)) {
-                $this->reply($this->worker->connections[$id], $packet);
+            if ($client['chat_id'] === $chatId && isset($this->connections[$id]) && ($actor = Auth::user($client['token'])) && ProjectAccess::canChat($actor, $chatId)) {
+                $this->reply($this->connections[$id], $packet);
             }
         }
     }
@@ -923,8 +967,8 @@ final class Codex
     private function terminalShutdown(): void
     {
         foreach ($this->terminalPipes as $pipe) if (is_resource($pipe)) {
-            Worker::$globalEvent?->offReadable($pipe);
-            Worker::$globalEvent?->offWritable($pipe);
+            $this->unwatchReadable($pipe);
+            $this->unwatchWritable($pipe);
             fclose($pipe);
         }
         if (is_resource($this->terminalProcess)) {
@@ -935,5 +979,51 @@ final class Codex
         $this->terminalPipes = [];
         $this->terminalInput = '';
         $this->terminalOutput = '';
+    }
+
+    private function watchReadable(mixed $stream, callable $callback): void
+    {
+        if ($this->loop === null || !is_resource($stream)) {
+            return;
+        }
+        $key = get_resource_id($stream);
+        $this->unwatchReadable($stream);
+        $this->watchers[$key]['read'] = $this->loop->onReadable($stream, $callback(...));
+    }
+
+    private function watchWritable(mixed $stream, callable $callback): void
+    {
+        if ($this->loop === null || !is_resource($stream)) {
+            return;
+        }
+        $key = get_resource_id($stream);
+        $this->unwatchWritable($stream);
+        $this->watchers[$key]['write'] = $this->loop->onWritable($stream, $callback(...));
+    }
+
+    private function unwatchReadable(mixed $stream): void
+    {
+        $this->cancelWatcher($stream, 'read');
+    }
+
+    private function unwatchWritable(mixed $stream): void
+    {
+        $this->cancelWatcher($stream, 'write');
+    }
+
+    private function cancelWatcher(mixed $stream, string $kind): void
+    {
+        if ($this->loop === null || !is_resource($stream)) {
+            return;
+        }
+        $key = get_resource_id($stream);
+        $id = $this->watchers[$key][$kind] ?? null;
+        if ($id !== null) {
+            $this->loop->cancel($id);
+            unset($this->watchers[$key][$kind]);
+        }
+        if (($this->watchers[$key] ?? []) === []) {
+            unset($this->watchers[$key]);
+        }
     }
 }

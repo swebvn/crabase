@@ -34,11 +34,11 @@ try {
     rejected(fn() => A::handle('message', array_replace($send, ['user_id'=>'other'])));
     rejected(fn() => A::handle('message', array_replace($send, ['mode'=>'invalid'])));
     attachmentCheck(count(U::pending([$id], 'uploader')) === 1);
-    S::db()->exec("CREATE TRIGGER fail_attachment_message BEFORE INSERT ON messages BEGIN SELECT RAISE(ABORT, 'test failure'); END");
+    S::connection()->execute("CREATE TRIGGER fail_attachment_message BEFORE INSERT ON messages BEGIN SELECT RAISE(ABORT, 'test failure'); END");
     $failed = false;
     try { A::handle('message', $send); } catch (\Throwable) { $failed = true; }
     attachmentCheck($failed && count(U::pending([$id], 'uploader')) === 1 && Artifacts::listing($chat) === []);
-    S::db()->exec('DROP TRIGGER fail_attachment_message');
+    S::connection()->execute('DROP TRIGGER fail_attachment_message');
     A::handle('message', $send);
     $message = S::thread($chat)['messages'][0];
     attachmentCheck($message['body'] === '' && $message['attachments'][0]['name'] === 'notes.txt');
@@ -58,7 +58,7 @@ try {
     A::handle('uploadChunk', ['user_id'=>'uploader','id'=>$avatar,'offset'=>0,'bytes'=>base64_encode($png)]);
     rejected(fn () => A::handle('avatarSave', ['user_id'=>'other','id'=>$avatar]));
     $result = A::handle('avatarSave', ['user_id'=>'uploader','id'=>$avatar]);
-    attachmentCheck(\app\model\User::query()->find('uploader')->avatar_url === $result['avatar_url']);
+    attachmentCheck(S::connection()->table('users')->where('id', 'uploader')->value('avatar_url') === $result['avatar_url']);
     attachmentCheck(file_get_contents(\app\service\Avatars::resolve(basename($result['avatar_url']))) === $png);
     attachmentCheck(\app\service\Avatars::resolve('../test.sqlite') === null);
     rejected(fn () => A::handle('avatarSave', ['user_id'=>'uploader','id'=>$avatar]));

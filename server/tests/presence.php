@@ -1,24 +1,96 @@
 <?php
 require dirname(__DIR__).'/vendor/autoload.php';
 use app\service\{Actions, Auth, Store};
-use Workerman\Connection\TcpConnection;
-use Workerman\Protocols\Http\Request;
+use Crab\Engine\EventLoop;
+use Crab\Engine\Http\Request;
+use Crab\Engine\Network\Connection;
+use Crab\Engine\WebSocket\WebSocketSession;
 
 $directory = sys_get_temp_dir().'/crabase-presence-'.bin2hex(random_bytes(8));
 mkdir($directory, 0700);
 putenv('CRABASE_DB='.$directory.'/test.sqlite');
 putenv('CRABASE_WORKSPACE_ROOT='.$directory);
 function presenceCheck(bool $ok, string $what): void { if (!$ok) throw new RuntimeException('Presence check failed: '.$what); }
-// Records packets instead of writing to a socket; the worker only needs id and send().
-final class RecordingConnection extends TcpConnection
+// Uses Crab's real WebSocket session and records the frames it writes to a socket pair.
+final class RecordingSession
 {
     public array $sent = [];
-    public function send(mixed $sendBuffer, bool $raw = false): bool|null { $this->sent[] = json_decode($sendBuffer, true); return true; }
-    public function close(mixed $data = null, bool $raw = false): void {}
+    private string $input = '';
+    private readonly Connection $connection;
+    /** @var resource */
+    private $client;
+
+    public readonly WebSocketSession $session;
+
+    public function __construct()
+    {
+        $pair = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, 0);
+        if ($pair === false) throw new RuntimeException('Could not create a WebSocket test socket.');
+        [$server, $client] = $pair;
+        stream_set_blocking($client, false);
+        $this->client = $client;
+        $this->connection = new Connection(EventLoop::current(), $server, maxWriteBufferSize: 8 * 1024 * 1024);
+        $this->session = new WebSocketSession($this->connection, static function (): void {});
+    }
+
+    public function request(string $token): Request
+    {
+        return new Request('GET', '/', '1.1', [
+            'host' => ['127.0.0.1:8788'],
+            'origin' => ['http://127.0.0.1:8787'],
+            'cookie' => [Auth::COOKIE.'='.$token],
+        ]);
+    }
+
+    public function drain(): void
+    {
+        while (($chunk = fread($this->client, 65536)) !== false && $chunk !== '') {
+            $this->input .= $chunk;
+        }
+        while (strlen($this->input) >= 2) {
+            $first = ord($this->input[0]);
+            $second = ord($this->input[1]);
+            $length = $second & 0x7f;
+            $offset = 2;
+            if ($length === 126) {
+                if (strlen($this->input) < 4) return;
+                $length = unpack('n', substr($this->input, 2, 2))[1];
+                $offset = 4;
+            } elseif ($length === 127) {
+                if (strlen($this->input) < 10) return;
+                $parts = unpack('N2', substr($this->input, 2, 8));
+                $length = ($parts[1] * 4_294_967_296) + $parts[2];
+                $offset = 10;
+            }
+            if (($second & 0x80) !== 0) $offset += 4;
+            if (strlen($this->input) < $offset + $length) return;
+            $payload = substr($this->input, $offset, $length);
+            $this->input = substr($this->input, $offset + $length);
+            if (($first & 0x0f) === 1) {
+                $packet = json_decode($payload, true);
+                if (is_array($packet)) $this->sent[] = $packet;
+            }
+        }
+    }
+
     public function last(string $type): ?array
     {
+        $this->drain();
         foreach (array_reverse($this->sent) as $packet) if (($packet['type'] ?? '') === $type) return $packet;
         return null;
+    }
+
+    public function clear(): void
+    {
+        $this->drain();
+        $this->sent = [];
+    }
+
+    public function close(): void
+    {
+        $this->session->close();
+        $this->connection->close();
+        fclose($this->client);
     }
 }
 try {
@@ -26,39 +98,35 @@ try {
     presenceCheck(is_resource($process) && proc_close($process) === 0, 'migrate');
     Store::db();
     $worker = new app\process\Codex();
-    $server = (new ReflectionClass(Workerman\Worker::class))->newInstanceWithoutConstructor();
-    (new ReflectionProperty($worker, 'worker'))->setValue($worker, $server);
-    $connect = function (int $id, string $name) use ($worker, $server): RecordingConnection {
+    $connect = function (string $name) use ($worker): RecordingSession {
         $user = Auth::create(['name'=>$name, 'email'=>$name.'@example.com', 'password'=>bin2hex(random_bytes(16))]);
-        $connection = (new ReflectionClass(RecordingConnection::class))->newInstanceWithoutConstructor();
-        $connection->id = $id;
-        $connection->sent = [];
-        $server->connections[$id] = $connection;
-        $worker->onWebSocketConnect($connection, new Request("GET / HTTP/1.1\r\nHost: 127.0.0.1:8788\r\nOrigin: http://127.0.0.1:8787\r\nCookie: ".Auth::COOKIE.'='.Auth::session($user['id'])."\r\n\r\n"));
+        $connection = new RecordingSession();
+        $worker->onWebSocketConnect($connection->session, $connection->request(Auth::session($user['id'])));
         return $connection;
     };
-    $call = function (RecordingConnection $connection, string $action, array $data = []) use ($worker): array {
+    $call = function (RecordingSession $connection, string $action, array $data = []) use ($worker): array {
         static $sequence = 0;
-        $connection->sent = [];
-        $worker->onMessage($connection, json_encode(['id'=>++$sequence, 'action'=>$action, 'data'=>(object)$data]));
+        $connection->clear();
+        $worker->onMessage($connection->session, json_encode(['id'=>++$sequence, 'action'=>$action, 'data'=>(object)$data]));
+        $connection->drain();
         foreach ($connection->sent as $packet) if (($packet['id'] ?? null) === $sequence) return $packet;
         throw new RuntimeException('No reply to '.$action);
     };
-    $ada = $connect(1, 'ada');
-    $bob = $connect(2, 'bob');
+    $ada = $connect('ada');
+    $bob = $connect('bob');
     $chat = Actions::handle('create', ['title'=>'Shared'])['id'];
     $other = Actions::handle('create', ['title'=>'Other'])['id'];
 
     $call($ada, 'sync', ['chat_id'=>$chat]);
     presenceCheck($ada->last('presence') === ['type'=>'presence','chat_id'=>$chat,'viewers'=>['ada'],'typing'=>[]], 'first viewer');
-    $ada->sent = [];
+    $ada->clear();
     $call($bob, 'sync', ['chat_id'=>$chat]);
     presenceCheck($ada->last('presence')['viewers'] === ['ada','bob'] && $bob->last('presence')['viewers'] === ['ada','bob'], 'second viewer reaches both');
 
-    $ada->sent = [];
+    $ada->clear();
     presenceCheck(isset($call($bob, 'typing', ['chat_id'=>$chat,'active'=>true])['result']), 'typing accepted');
     presenceCheck($ada->last('presence')['typing'] === ['bob'], 'typing reaches the other viewer');
-    $ada->sent = [];
+    $ada->clear();
     $call($bob, 'typing', ['chat_id'=>$chat,'active'=>true]);
     presenceCheck($ada->last('presence') === null, 'refreshing typing does not rebroadcast');
     $call($bob, 'typing', ['chat_id'=>$chat,'active'=>false]);
@@ -68,7 +136,7 @@ try {
 
     // Loading earlier history in the same chat must not rebroadcast presence or clear typing.
     $call($bob, 'typing', ['chat_id'=>$chat,'active'=>true]);
-    $ada->sent = [];
+    $ada->clear();
     $call($bob, 'sync', ['chat_id'=>$chat,'before'=>1]);
     presenceCheck($ada->last('presence') === null, 'same-chat sync is silent');
 
@@ -76,8 +144,8 @@ try {
     presenceCheck($ada->last('presence') === ['type'=>'presence','chat_id'=>$chat,'viewers'=>['ada'],'typing'=>[]], 'leaving clears viewer and typing');
     presenceCheck($bob->last('presence')['chat_id'] === $other && $bob->last('presence')['viewers'] === ['bob'], 'mover sees the new chat only');
     $call($bob, 'sync', ['chat_id'=>$chat]);
-    $bob->sent = [];
-    $worker->onClose($ada);
+    $bob->clear();
+    $worker->onClose($ada->session);
     presenceCheck($bob->last('presence')['viewers'] === ['bob'], 'disconnect removes the viewer');
 
     // The snapshot names whose request the agent is running, so others can be told their message steers it.
@@ -90,6 +158,8 @@ try {
     presenceCheck($running() === 'bob', 'running chat names the requester');
     echo "PASS: chat viewers, typing start/refresh/stop, validation, chat switches, disconnects and running-request owner.\n";
 } finally {
+    if (isset($ada)) $ada->close();
+    if (isset($bob)) $bob->close();
     $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($directory, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST);
     foreach ($files as $file) $file->isDir() ? rmdir($file->getPathname()) : unlink($file->getPathname());
     rmdir($directory);

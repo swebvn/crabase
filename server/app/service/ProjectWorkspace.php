@@ -2,8 +2,6 @@
 namespace app\service;
 
 use InvalidArgumentException;
-use app\model\Project;
-
 final class ProjectWorkspace
 {
     private const MAX_FILE_SIZE = 1000000;
@@ -126,15 +124,36 @@ final class ProjectWorkspace
 
     private static function root(array $data): string
     {
-        $id = Store::text($data['project_id'] ?? null, 64);
-        $project = Project::query()->find($id);
+        $id = Input::text($data['project_id'] ?? null, 64);
+        $project = Store::connection()->table('projects')->where('id', $id)->first();
         if (!$project) throw new InvalidArgumentException('Project not found.');
-        return $project->workspacePath();
+        return self::workspacePath($project);
+    }
+
+    /** @param array<string, mixed> $project */
+    public static function workspacePath(array $project): string
+    {
+        if (!$project['parent_id']) return WorkspaceFolders::resolve($project['path']);
+        $base = WorkspaceFolders::root().'/.worktrees';
+        $expected = (string)$project['path'];
+        $parent = Store::connection()->table('projects')->where('id', $project['parent_id'])->first();
+        $directory = $parent ? $base.'/'.Worktrees::projectFolder($parent['name']) : '';
+        $legacy = $base.'/'.$project['parent_id'].'/'.$project['id'];
+        if ($expected !== $legacy && (!$parent || dirname($expected) !== $directory || !preg_match('/^[a-z]+-[a-z]+$/D', basename($expected)))) {
+            throw new InvalidArgumentException('Invalid worktree folder.');
+        }
+        foreach ([dirname(dirname($expected)), dirname($expected), $expected] as $path) {
+            if (is_link($path)) throw new InvalidArgumentException('Worktree folder cannot be a symlink.');
+        }
+        if ($project['path'] !== $expected || realpath($expected) !== $expected || !is_dir($expected) || !is_readable($expected)) {
+            throw new InvalidArgumentException('Worktree folder is unavailable.');
+        }
+        return $expected;
     }
 
     private static function relative(mixed $value): string
     {
-        $path = Store::text($value, 4096);
+        $path = Input::text($value, 4096);
         if (str_contains($path, "\0") || str_starts_with($path, '/') || str_starts_with($path, '\\')) {
             throw new InvalidArgumentException('Invalid project path.');
         }

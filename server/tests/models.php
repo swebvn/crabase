@@ -3,6 +3,7 @@ require dirname(__DIR__) . '/vendor/autoload.php';
 use app\service\Store as S;
 use app\service\Actions as A;
 use app\service\ModelCatalog;
+use app\record\{Chat, User, Message, Project};
 $path = tempnam(sys_get_temp_dir(), 'crabase-models-');
 putenv('CRABASE_DB='.$path);
 function check(bool $ok): void { if (!$ok) throw new RuntimeException('Model selection check failed.'); }
@@ -16,7 +17,7 @@ try {
     check(array_key_exists('branch', A::handle('projectContext', ['project_id'=>$project])));
     try { A::handle('projectContext', ['project_id'=>'missing']); throw new RuntimeException('Missing project accepted'); }
     catch (InvalidArgumentException) {}
-    $users = array_column(\app\model\User::all()->toArray(), 'id', 'name');
+    $users = array_column(S::connection()->table('users')->get(), 'id', 'name');
     S::run('INSERT INTO users VALUES (?,?,?,?)', ['named-user','Name, with comma','',gmdate('c')]);
     $users['Name, with comma'] = 'named-user';
     $models = [['model'=>'test-model','defaultReasoningEffort'=>'low','supportedReasoningEfforts'=>[['reasoningEffort'=>'low'],['reasoningEffort'=>'high']]]];
@@ -32,7 +33,7 @@ try {
     check(count(S::all('SELECT * FROM messages WHERE chat_id=?',[$chat])) === 2);
     $longTitle = str_repeat('x', 512);
     A::handle('rename', ['chat_id'=>$chat, 'title'=>$longTitle]);
-    check(\app\model\Chat::find($chat)->title === $longTitle);
+    check(S::connection()->table('chats')->into(Chat::class)->find($chat)->title === $longTitle);
     foreach ([' ', str_repeat('x', 513)] as $invalidTitle) {
         try { A::handle('rename', ['chat_id'=>$chat, 'title'=>$invalidTitle]); throw new RuntimeException('Invalid chat title accepted'); }
         catch (InvalidArgumentException) {}
@@ -44,49 +45,49 @@ try {
     S::run('INSERT INTO messages (chat_id,role,author,body,created_at) VALUES (?,?,?,?,?)', [$participantsChat,'assistant','Crab','hello',gmdate('c')]);
     $participants = array_column(S::snapshot()['chats'], 'participants', 'id')[$participantsChat];
     check($participants === ['user1','Name, with comma']);
-    $user = \app\model\User::find($users['user1']);
-    check($user->messages()->where('chat_id', $chat)->count() === 2);
-    check(\app\model\Chat::find($chat)->jobs()->count() === 2);
-    check(\app\model\Message::where('chat_id', $chat)->first()->user->id === $user->id);
+    $user = S::connection()->table('users')->into(User::class)->find($users['user1']);
+    check(S::connection()->table('messages')->where('user_id', $user->id)->where('chat_id', $chat)->count() === 2);
+    check(S::connection()->table('jobs')->where('chat_id', $chat)->count() === 2);
+    check(S::connection()->table('messages')->where('chat_id', $chat)->where('user_id', $user->id)->exists());
     A::handle('userAvatar', ['user_id'=>$user->id,'avatar_url'=>'https://example.com/avatar.png']);
-    check($user->fresh()->avatar_url === 'https://example.com/avatar.png');
+    check(S::connection()->table('users')->where('id', $user->id)->value('avatar_url') === 'https://example.com/avatar.png');
     foreach ([['user_id'=>'missing','avatar_url'=>'https://example.com/a.png'], ['user_id'=>$user->id,'avatar_url'=>'javascript:alert(1)']] as $bad) {
         try { A::handle('userAvatar', $bad); throw new RuntimeException('Invalid profile accepted'); } catch (InvalidArgumentException) {}
     }
     try { A::handle('message', ['chat_id'=>$chat,'body'=>'spoof','user_id'=>'missing']); throw new RuntimeException('Unknown user accepted'); } catch (InvalidArgumentException) {}
     try {
-        \support\Db::transaction(function () use ($user) {
-            $user->update(['avatar_url'=>'https://example.com/rollback.png']);
+        S::transaction(function () use ($user) {
+            S::connection()->table('users')->where('id', $user->id)->update(['avatar_url'=>'https://example.com/rollback.png']);
             S::run('UPDATE users SET name=? WHERE id=?', ['rollback-name', $user->id]);
             throw new RuntimeException('rollback test');
         });
     } catch (RuntimeException) {}
-    check($user->fresh()->name === 'user1' && $user->fresh()->avatar_url === 'https://example.com/avatar.png');
-    $revision = fn () => (int)\app\model\Setting::query()->whereKey('revision')->value('value');
+    check(S::connection()->table('users')->where('id', $user->id)->value('name') === 'user1' && S::connection()->table('users')->where('id', $user->id)->value('avatar_url') === 'https://example.com/avatar.png');
+    $revision = fn () => (int)S::connection()->table('settings')->where('key', 'revision')->value('value');
     $before = $revision();
-    S::notify(\app\model\Message::query()->whereKey(-1)->update(['body'=>'missing']));
+    S::notify(S::connection()->table('messages')->where('id', -1)->update(['body'=>'missing']));
     check($revision() === $before);
-    $message = \app\model\Message::query()->where('chat_id', $chat)->first();
+    $message = S::connection()->table('messages')->into(Message::class)->where('chat_id', $chat)->first();
     $original = $message->body;
-    \app\model\Message::appendBody($message->id, "'quoted' \nΔ");
-    check($message->fresh()->body === $original."'quoted' \nΔ" && $revision() === $before + 1);
+    \app\service\MessageBody::append($message->id, "'quoted' \nΔ");
+    check(S::connection()->table('messages')->where('id', $message->id)->value('body') === $original."'quoted' \nΔ" && $revision() === $before + 1);
     $before = $revision();
     try {
-        \support\Db::transaction(function () use ($message) {
-            \app\model\Message::appendBody($message->id, 'rolled back');
-            \app\model\Setting::put('rollback-test', 'value');
+        S::transaction(function () use ($message) {
+            \app\service\MessageBody::append($message->id, 'rolled back');
+            S::notify(S::connection()->table('settings')->upsert([['key'=>'rollback-test', 'value'=>'value']], ['key'], ['value']));
             throw new RuntimeException('rollback');
         });
     } catch (RuntimeException) {}
-    check($revision() === $before && !\app\model\Setting::query()->whereKey('rollback-test')->exists());
-    check(!str_ends_with($message->fresh()->body, 'rolled back'));
+    check($revision() === $before && !S::connection()->table('settings')->where('key', 'rollback-test')->exists());
+    check(!str_ends_with((string)S::connection()->table('messages')->where('id', $message->id)->value('body'), 'rolled back'));
     $workspace = sys_get_temp_dir().'/crabase-project-'.bin2hex(random_bytes(8));
     $previousRoot = getenv('CRABASE_WORKSPACE_ROOT');
     mkdir($workspace); mkdir($workspace.'/Folder name');
     putenv('CRABASE_WORKSPACE_ROOT='.$workspace);
     try {
         $opened = A::handle('project', ['path'=>$workspace.'/Folder name', 'name'=>'Ignored custom name']);
-        check(\app\model\Project::find($opened['id'])->name === 'Folder name');
+        check(S::connection()->table('projects')->into(Project::class)->find($opened['id'])->name === 'Folder name');
         check(A::handle('project', ['path'=>$workspace.'/Folder name'])['id'] === $opened['id']);
         $id = $opened['id'];
         file_put_contents($workspace.'/Folder name/keep.txt', 'keep');
@@ -94,15 +95,15 @@ try {
         A::handle('message', ['chat_id'=>$owned,'body'=>'keep until deleted','mode'=>'note','user_id'=>$users['user1']]);
         S::run('UPDATE chats SET thread_id=? WHERE id=?', ['runtime-thread', $owned]);
         A::handle('projectArchive', ['project_id'=>$id,'archived'=>true]);
-        check(\app\model\Project::find($id)->archived === 1 && S::thread($owned)['chat']['archived'] === 0);
+        check((int)S::connection()->table('projects')->where('id', $id)->value('archived') === 1 && S::thread($owned)['chat']['archived'] === 0);
         A::handle('projectArchive', ['project_id'=>$id,'archived'=>false]);
-        check(\app\model\Project::find($id)->archived === 0);
+        check((int)S::connection()->table('projects')->where('id', $id)->value('archived') === 0);
         try { A::handle('projectArchive', ['project_id'=>$id,'archived'=>'false']); throw new RuntimeException('Invalid archive accepted'); }
         catch (InvalidArgumentException) {}
         S::run('INSERT INTO jobs (chat_id,prompt,message_id) SELECT chat_id,body,id FROM messages WHERE chat_id=?', [$owned]);
         try { A::handle('projectDelete', ['project_id'=>$id]); throw new RuntimeException('Queued work deleted'); }
         catch (InvalidArgumentException) {}
-        check(\app\model\Project::find($id) !== null);
+        check(S::connection()->table('projects')->where('id', $id)->exists());
         S::run("UPDATE jobs SET status='done' WHERE chat_id=?", [$owned]);
         S::run("UPDATE chats SET status='running' WHERE id=?", [$owned]);
         try { A::handle('projectDelete', ['project_id'=>$id]); throw new RuntimeException('Active chat deleted'); }
@@ -110,9 +111,9 @@ try {
         S::run("UPDATE chats SET status='idle' WHERE id=?", [$owned]);
         S::run('INSERT INTO approvals (chat_id,rpc_id,method,details) VALUES (?,?,?,?)', [$owned,'1','test','{}']);
         A::handle('projectDelete', ['project_id'=>$id]);
-        check(\app\model\Project::find($id) === null && \app\model\Chat::find($owned) === null);
+        check(!S::connection()->table('projects')->where('id', $id)->exists() && !S::connection()->table('chats')->where('id', $owned)->exists());
         foreach (['messages','jobs','approvals','events'] as $table) check(!S::all("SELECT * FROM $table WHERE chat_id=?", [$owned]));
-        check(\app\model\Chat::find($participantsChat) !== null);
+        check(S::connection()->table('chats')->where('id', $participantsChat)->exists());
         check(file_get_contents($workspace.'/Folder name/keep.txt') === 'keep');
         check(S::all('PRAGMA foreign_key_check') === []);
         unlink($workspace.'/Folder name/keep.txt');

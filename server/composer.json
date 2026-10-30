@@ -1,68 +1,32 @@
 {
-  "name": "workerman/webman",
+  "name": "crabase/server",
   "type": "project",
   "keywords": [
-    "high performance",
-    "http service"
+    "crabphp",
+    "codex",
+    "workspace"
   ],
-  "homepage": "https://www.workerman.net",
   "license": "MIT",
-  "description": "High performance HTTP Service Framework.",
-  "authors": [
+  "description": "CrabPHP backend for the Crabase shared coding workspace.",
+  "require": {
+    "php": ">=8.4",
+    "crabphp/framework": "^0.2",
+    "robmorgan/phinx": "^0.16"
+  },
+  "repositories": [
     {
-      "name": "walkor",
-      "email": "walkor@workerman.net",
-      "homepage": "https://www.workerman.net",
-      "role": "Developer"
+      "type": "vcs",
+      "url": "https://github.com/crabphp/framework"
     }
   ],
-  "support": {
-    "email": "walkor@workerman.net",
-    "issues": "https://github.com/walkor/webman/issues",
-    "forum": "https://wenda.workerman.net/",
-    "wiki": "https://workerman.net/doc/webman",
-    "source": "https://github.com/walkor/webman"
-  },
-  "require": {
-    "php": ">=8.1",
-    "workerman/webman-framework": "^2.1",
-    "monolog/monolog": "^2.0",
-    "robmorgan/phinx": "^0.16",
-    "webman/database": "^2.1"
-  },
-  "suggest": {
-    "ext-event": "For better performance. "
-  },
   "autoload": {
     "psr-4": {
-      "": "./",
-      "app\\": "./app",
-      "App\\": "./app",
-      "app\\View\\Components\\": "./app/view/components"
-    }
-  },
-  "scripts": {
-    "post-package-install": [
-      "support\\Plugin::install"
-    ],
-    "post-package-update": [
-      "support\\Plugin::install"
-    ],
-    "pre-package-uninstall": [
-      "support\\Plugin::uninstall"
-    ],
-    "post-create-project-cmd": [
-      "support\\Setup::run"
-    ],
-    "setup-webman": [
-      "support\\Setup::run"
-    ]
+      "app\\": "./app/",
+      "App\\": "./app/"
+    },
+    "files": ["app/functions.php"]
   },
   "minimum-stability": "dev",
   "prefer-stable": true,
-  "config": {
-    "platform": {
-      "php": "8.1.0"
-    }
-  }
+  "config": {}
 }

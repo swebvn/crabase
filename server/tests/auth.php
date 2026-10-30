@@ -71,16 +71,16 @@ try {
     authCheck(app\service\OAuth::account(['id'=>'provider-1','email'=>'admin@example.com']) === $id);
     $passportProfile = ['id'=>'passport-new','name'=>'Admin','email'=>'new-passport@example.com','email_verified'=>false,'admin'=>true];
     $passportId = app\service\OAuth::account($passportProfile);
-    $passportAccount = app\model\Account::query()->find($passportId);
-    authCheck($passportAccount->admin === 0 && $passportAccount->enabled === 1);
-    authCheck(app\model\User::query()->find($passportId)->name !== 'Admin');
+    $passportAccount = S::connection()->table('accounts')->where('user_id', $passportId)->first();
+    authCheck($passportAccount['admin'] === 0 && $passportAccount['enabled'] === 1);
+    authCheck(S::connection()->table('users')->where('id', $passportId)->value('name') !== 'Admin');
     authCheck(app\service\OAuth::account($passportProfile) === $passportId);
     authCheck(A::user(A::session($passportId))['id'] === $passportId);
-    $count = app\model\Account::query()->count();
+    $count = S::connection()->table('accounts')->count();
     denied(fn () => app\service\OAuth::account(['id'=>'missing-email']));
     denied(fn () => app\service\OAuth::account(['id'=>'invalid-email','email'=>'invalid']));
-    authCheck(app\model\Account::query()->count() === $count);
-    app\model\Account::query()->whereKey($passportId)->update(['enabled'=>0]);
+    authCheck(S::connection()->table('accounts')->count() === $count);
+    S::connection()->table('accounts')->where('user_id', $passportId)->update(['enabled'=>0]);
     denied(fn () => app\service\OAuth::account($passportProfile));
     denied(fn () => app\service\OAuth::account(array_replace($passportProfile, ['id'=>'different-subject'])));
     authCheck(app\service\OAuth::account(['id'=>'provider-1','email'=>'admin@example.com','email_verified_at'=>'2026-09-09T00:00:00Z']) === $id);
@@ -88,8 +88,8 @@ try {
     denied(fn () => app\service\OAuth::account(['id'=>'provider-2','email'=>'admin@example.com','email_verified'=>true]));
     for ($i=0;$i<10;$i++) denied(fn () => A::login(['email'=>'none@example.com','password'=>'wrong'],'limited'));
     denied(fn () => A::login(['email'=>'admin@example.com','password'=>'test-password'],'limited'));
-    authCheck(!array_key_exists('password_hash', app\model\Account::query()->find($id)->toArray()));
-    authCheck(!array_key_exists('token_hash', app\model\AuthSession::query()->first()->toArray()));
+    authCheck(!array_key_exists('password_hash', A::users($admin)[0]));
+    authCheck(!array_key_exists('token_hash', S::connection()->table('auth_sessions')->select('user_id')->first()));
     echo "PASS: accounts, hashing, sessions, revocation, throttling, roles, last admin, Gravatar and coauthors.\n";
 } finally {
     foreach ([$db,$db.'-wal',$db.'-shm'] as $file) if (is_file($file)) unlink($file);

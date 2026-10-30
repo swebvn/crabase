@@ -4,6 +4,35 @@ import base64, json, os, socket, struct, subprocess, uuid, tempfile
 import atexit, urllib.request, urllib.error
 from pathlib import Path
 
+server_process = None
+
+def ensure_server(server):
+    global server_process
+    try:
+        with socket.create_connection(('127.0.0.1', 8787), timeout=0.2):
+            return
+    except OSError:
+        pass
+    server_process = subprocess.Popen(['php', 'start.php', 'start', '--workers=1'], cwd=server)
+    deadline = __import__('time').time() + 10
+    while __import__('time').time() < deadline:
+        try:
+            with socket.create_connection(('127.0.0.1', 8787), timeout=0.2):
+                return
+        except OSError:
+            __import__('time').sleep(0.05)
+    raise RuntimeError('Crab server did not start')
+
+def stop_server():
+    if server_process is not None:
+        server_process.terminate()
+        try:
+            server_process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            server_process.kill()
+
+atexit.register(stop_server)
+
 class Client:
     def __init__(self, origin='http://127.0.0.1:8787', cookie=''):
         self.socket = socket.create_connection(('127.0.0.1',8788),timeout=5)
@@ -28,13 +57,33 @@ class Client:
         header=bytes([0x81,0x80|size]) if size<126 else bytes([0x81,0xfe])+struct.pack('!H',size)
         self.socket.sendall(header+mask+bytes(v^mask[i%4] for i,v in enumerate(data)))
     def receive(self):
-        first,size=self.read(2)
-        if first&15 == 8: raise ConnectionError('Socket closed')
-        assert first&15 == 1 and first&128
+        while True:
+            first,size=self.read(2)
+            opcode=first&15
+            payload=self._frame_payload(size)
+            if opcode == 8: raise ConnectionError('Socket closed')
+            if opcode == 9:
+                self._control(10, payload)
+                continue
+            if opcode == 10: continue
+            assert opcode == 1
+            while not first&128:
+                first,size=self.read(2)
+                assert first&15 == 0
+                payload += self._frame_payload(size)
+            return json.loads(payload)
+
+    def _frame_payload(self,size):
         size &= 127
         if size==126: size=struct.unpack('!H',self.read(2))[0]
         elif size==127: size=struct.unpack('!Q',self.read(8))[0]
-        return json.loads(self.read(size))
+        return self.read(size)
+
+    def _control(self,opcode,payload):
+        mask=os.urandom(4); size=len(payload)
+        if size < 126: header=bytes([0x80|opcode,0x80|size])
+        else: header=bytes([0x80|opcode,0x80|126])+struct.pack('!H',size)
+        self.socket.sendall(header+mask+bytes(v^mask[i%4] for i,v in enumerate(payload)))
     def call(self,action,data=None,error=False):
         self.sequence+=1; self.send({'id':self.sequence,'action':action,'data':data or {}})
         while True:
@@ -51,6 +100,16 @@ class Client:
 
 if __name__=='__main__':
     server = Path(__file__).resolve().parents[1]
+    ensure_server(server)
+    with urllib.request.urlopen('http://127.0.0.1:8787/') as response:
+        html = response.read().decode()
+        assert response.status == 200 and '/assets/' in html
+    asset = next(line.split('src="', 1)[1].split('"', 1)[0] for line in html.splitlines() if 'src="/assets/' in line)
+    with urllib.request.urlopen('http://127.0.0.1:8787' + asset) as response:
+        assert response.status == 200 and response.headers.get_content_type() in {'application/javascript', 'text/javascript'}
+    stylesheet = next(line.split('href="', 1)[1].split('"', 1)[0] for line in html.splitlines() if 'href="/assets/' in line and '.css"' in line)
+    with urllib.request.urlopen('http://127.0.0.1:8787' + stylesheet) as response:
+        assert response.status == 200 and response.headers.get_content_type() == 'text/css'
     accounts = json.loads(subprocess.check_output(['php','tests/auth-fixture.php'],cwd=server))
     atexit.register(lambda: subprocess.run(['php','tests/auth-fixture.php','cleanup',*[a['id'] for a in accounts]],cwd=server,check=True))
     cookies = []
@@ -113,7 +172,7 @@ if __name__=='__main__':
         assert second.call('sync',{'chat_id':owned})['thread']['messages'][0]['body']=='Delete fixture'
         # Child workspaces inherit both grants and revocation from the original project.
         child=uuid.uuid4().hex[:16]
-        subprocess.run(['php','-r',"require 'vendor/autoload.php'; app\\service\\Store::db(); app\\model\\Project::query()->create(['id'=>$argv[1],'name'=>'Child','path'=>$argv[2], 'parent_id'=>$argv[3]]); app\\service\\Store::notify();",child,temp+'/child',project_id],cwd=server,check=True)
+        subprocess.run(['php','-r',"require 'vendor/autoload.php'; app\\service\\Store::connection()->table('projects')->insert(['id'=>$argv[1],'name'=>'Child','path'=>$argv[2], 'parent_id'=>$argv[3]]); app\\service\\Store::notify();",child,temp+'/child',project_id],cwd=server,check=True)
         child_chat=first.call('create',{'project_id':child})['id']
         assert second.call('sync',{'chat_id':child_chat})['thread']['chat']['project_id']==child
         second.events.clear()
@@ -127,7 +186,7 @@ if __name__=='__main__':
         first.call('projectSharingSave',{'project_id':project_id,'visibility':'public','members':[]})
         assert second.call('sync',{'chat_id':child_chat})['thread']['chat']['project_id']==child
         second.call('projectSharingSave',{'project_id':project_id,'visibility':'private','members':[]},error=True)
-        subprocess.run(['php','-r',"require 'vendor/autoload.php'; app\\service\\Store::db(); app\\model\\Event::query()->where('chat_id',$argv[1])->delete(); app\\model\\Chat::query()->whereKey($argv[1])->delete(); app\\model\\Project::query()->whereKey($argv[2])->delete(); app\\service\\Store::notify();",child_chat,child],cwd=server,check=True)
+        subprocess.run(['php','-r',"require 'vendor/autoload.php'; $db=app\\service\\Store::connection(); $db->table('events')->where('chat_id',$argv[1])->delete(); $db->table('chats')->where('id',$argv[1])->delete(); $db->table('projects')->where('id',$argv[2])->delete(); app\\service\\Store::notify();",child_chat,child],cwd=server,check=True)
         second.call('sync',{'chat_id':owned})
         second.call('projectArchive',{'project_id':project_id,'archived':True},error=True)
         second.call('projectDelete',{'project_id':project_id},error=True)
@@ -153,7 +212,14 @@ if __name__=='__main__':
         assert project_id not in pushed['pins']
         assert keep.read_text()=='keep'
         first.call('sync',{'chat_id':owned},error=True)
-    state=first.call('sync')['state']; users={u['name']:u['id'] for u in state['users']}; assert state['projects'] and state['chats']
+    state=first.call('sync')['state']
+    if not state['projects']:
+        subprocess.run(['php', 'vendor/bin/phinx', 'seed:run', '-c', 'phinx.php'], cwd=server, check=True)
+        state=first.call('sync')['state']
+    if not state['chats']:
+        first.call('create', {'title': 'Smoke baseline'})
+        state=first.call('sync')['state']
+    users={u['name']:u['id'] for u in state['users']}; assert state['projects'] and state['chats']
     workspace=first.call('projectWorkspace', {'project_id':state['projects'][0]['id']})
     assert set(workspace)=={'paths','ignored','git','branch','changes'}
     folders=first.call('projectFolders')

@@ -1,17 +1,17 @@
 <?php
 namespace app\service;
 
-use app\model\Project;
 use InvalidArgumentException;
 
 final class Worktrees
 {
-    public static function remove(Project $project, bool $force = false): bool
+    /** @param array<string, mixed> $project */
+    public static function remove(array $project, bool $force = false): bool
     {
-        if (!$project->parent_id) throw new InvalidArgumentException('Only managed worktree folders can be deleted.');
-        $path = $project->workspacePath();
-        $parent = Project::query()->find($project->parent_id) ?? throw new InvalidArgumentException('Original project not found.');
-        $root = $parent->workspacePath();
+        if (!$project['parent_id']) throw new InvalidArgumentException('Only managed worktree folders can be deleted.');
+        $path = ProjectWorkspace::workspacePath($project);
+        $parent = Store::connection()->table('projects')->where('id', $project['parent_id'])->first() ?? throw new InvalidArgumentException('Original project not found.');
+        $root = ProjectWorkspace::workspacePath($parent);
         [$status, $registered] = ProjectWorkspace::command($root, ['worktree', 'list', '--porcelain', '-z']);
         if ($status !== 0 || !in_array('worktree '.$path, explode("\0", $registered), true)) throw new InvalidArgumentException('This folder is not a registered worktree of the original project.');
         [$status, $changes] = ProjectWorkspace::command($path, ['status', '--porcelain', '--untracked-files=all']);
@@ -43,11 +43,11 @@ final class Worktrees
 
     public static function create(array $data): array
     {
-        $project = Project::query()->find(Store::text($data['project_id'] ?? null, 64))
+        $project = Store::connection()->table('projects')->where('id', Input::text($data['project_id'] ?? null, 64))->first()
             ?? throw new InvalidArgumentException('Project not found.');
-        if ($project->parent_id || $project->archived) throw new InvalidArgumentException('Create worktrees from an active original project.');
-        $root = $project->workspacePath();
-        $branch = Store::text($data['branch'] ?? null, 160);
+        if ($project['parent_id'] || $project['archived']) throw new InvalidArgumentException('Create worktrees from an active original project.');
+        $root = ProjectWorkspace::workspacePath($project);
+        $branch = Input::text($data['branch'] ?? null, 160);
         if (!preg_match('~^[A-Za-z0-9][A-Za-z0-9._/-]*$~D', $branch) ||
             ProjectWorkspace::command($root, ['check-ref-format', '--branch', $branch])[0] !== 0) {
             throw new InvalidArgumentException('Enter a valid new branch name, such as feature/login.');
@@ -58,7 +58,7 @@ final class Worktrees
         if (ProjectWorkspace::command($root, ['show-ref', '--verify', '--quiet', 'refs/heads/'.$branch])[0] === 0) throw new InvalidArgumentException('That branch already exists. Choose a new branch name.');
         $id = bin2hex(random_bytes(8));
         $base = WorkspaceFolders::root().'/.worktrees';
-        $projectDirectory = $base.'/'.self::projectFolder($project->name);
+        $projectDirectory = $base.'/'.self::projectFolder($project['name']);
         foreach ([$base, $projectDirectory] as $directory) {
             if (is_link($directory)) throw new InvalidArgumentException('Worktree folder cannot be a symlink.');
             if (!is_dir($directory) && !mkdir($directory, 0700) && !is_dir($directory)) throw new \RuntimeException('Could not create worktree folder.');
@@ -69,7 +69,7 @@ final class Worktrees
         [$status, , $error] = ProjectWorkspace::command($root, ['-c', 'core.hooksPath=/dev/null', 'worktree', 'add', '-b', $branch, '--', $path, 'HEAD']);
         if ($status !== 0) throw new InvalidArgumentException('Could not create worktree: '.substr(trim($error), 0, 500));
         try {
-            Project::query()->create(['id'=>$id, 'parent_id'=>$project->id, 'name'=>$branch, 'path'=>$path]);
+            Store::connection()->table('projects')->insert(['id'=>$id, 'parent_id'=>$project['id'], 'name'=>$branch, 'path'=>$path]);
         } catch (\Throwable $error) {
             // Preserve the branch and folder on database failure; they can be recovered manually.
             throw new \RuntimeException('Worktree created at '.$path.' but could not be registered. Keep this path for recovery.', 0, $error);

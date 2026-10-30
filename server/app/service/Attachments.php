@@ -1,6 +1,6 @@
 <?php
 namespace app\service;
-use app\model\{Upload, Message};
+use app\record\{MessageAttachments, Upload};
 
 final class Attachments
 {
@@ -21,8 +21,8 @@ final class Attachments
     public static function cleanup(): void
     {
         Store::db();
-        foreach (Upload::query()->where('expires', '<', time())->limit(100)->get(['id']) as $row) {
-            self::remove($row['id']);
+        foreach (Store::connection()->table('uploads')->where('expires', '<', time())->limit(100)->pluck('id') as $id) {
+            self::remove((string)$id);
         }
     }
 
@@ -30,27 +30,28 @@ final class Attachments
     {
         $path = self::path($id);
         if (is_file($path) && !unlink($path)) throw new \RuntimeException('Could not remove upload.');
-        Upload::query()->whereKey($id)->delete();
+        Store::connection()->table('uploads')->where('id', $id)->delete();
     }
 
     public static function handle(string $action, array $data): array
     {
-        $user = Store::text($data['user_id'] ?? null, 64);
+        $user = Input::text($data['user_id'] ?? null, 64);
         if ($action === 'uploadStart') {
             self::cleanup();
-            $name = Store::text($data['name'] ?? null, 255);
+            $name = Input::text($data['name'] ?? null, 255);
             if (preg_match('/[\x00-\x1f\x7f\/\\\\]/', $name)) throw new \InvalidArgumentException('Invalid filename.');
             $size = $data['size'] ?? null;
             if (!is_int($size) || $size < 1 || $size > self::MAX_SIZE) throw new \InvalidArgumentException('Files must be between 1 byte and 5 MB.');
             $id = bin2hex(random_bytes(16));
-            \support\Db::transaction(function () use ($id, $user, $name, $size) {
-                if (Upload::query()->where('user_id', $user)->count() >= 30) throw new \InvalidArgumentException('Too many pending uploads. Remove unused attachments or wait for them to expire.');
-                Upload::query()->create(['id'=>$id, 'user_id'=>$user, 'name'=>$name, 'size'=>$size, 'expires'=>time()+86400]);
+            \app\service\Store::transaction(function () use ($id, $user, $name, $size) {
+                $db = Store::connection();
+                if ($db->table('uploads')->where('user_id', $user)->count() >= 30) throw new \InvalidArgumentException('Too many pending uploads. Remove unused attachments or wait for them to expire.');
+                $db->table('uploads')->insert(['id'=>$id, 'user_id'=>$user, 'name'=>$name, 'size'=>$size, 'expires'=>time()+86400]);
             });
             return ['id'=>$id];
         }
-        $id = Store::text($data['id'] ?? null, 32);
-        $row = Upload::query()->whereKey($id)->where('user_id', $user)->where('expires', '>=', time())->first();
+        $id = Input::text($data['id'] ?? null, 32);
+        $row = Store::connection()->table('uploads')->into(Upload::class)->where('id', $id)->where('user_id', $user)->where('expires', '>=', time())->first();
         if (!$row) throw new \InvalidArgumentException('Upload expired or unavailable. Please attach the file again.');
         if ($action === 'uploadRemove') {
             self::remove($id);
@@ -59,16 +60,16 @@ final class Attachments
         if ($action !== 'uploadChunk') throw new \InvalidArgumentException('Unknown upload action.');
         $encoded = $data['bytes'] ?? null;
         $bytes = is_string($encoded) && strlen($encoded) <= 65536 ? base64_decode($encoded, true) : false;
-        if ($bytes === false || strlen($bytes) < 1 || strlen($bytes) > 49152 || !is_int($data['offset'] ?? null) || $data['offset'] !== $row['received'] || $row['mime'] !== null || $row['received'] + strlen($bytes) > $row['size']) throw new \InvalidArgumentException('Invalid upload chunk. Retry the upload.');
+        if ($bytes === false || strlen($bytes) < 1 || strlen($bytes) > 49152 || !is_int($data['offset'] ?? null) || $data['offset'] !== $row->received || $row->mime !== null || $row->received + strlen($bytes) > $row->size) throw new \InvalidArgumentException('Invalid upload chunk. Retry the upload.');
         $path = self::path($id);
         $file = fopen($path, 'c+b');
         if (!$file) throw new \RuntimeException('Could not write upload.');
         try {
-            if (!flock($file, LOCK_EX) || !ftruncate($file, $row['received']) || fseek($file, $row['received']) !== 0 || fwrite($file, $bytes) !== strlen($bytes) || !fflush($file)) throw new \RuntimeException('Could not write upload.');
+            if (!flock($file, LOCK_EX) || !ftruncate($file, $row->received) || fseek($file, $row->received) !== 0 || fwrite($file, $bytes) !== strlen($bytes) || !fflush($file)) throw new \RuntimeException('Could not write upload.');
         } finally { fclose($file); }
         chmod($path, 0600);
-        $received = $row['received'] + strlen($bytes);
-        $mime = $received === $row['size'] ? ((new \finfo(FILEINFO_MIME_TYPE))->file($path) ?: 'application/octet-stream') : null;
+        $received = $row->received + strlen($bytes);
+        $mime = $received === $row->size ? ((new \finfo(FILEINFO_MIME_TYPE))->file($path) ?: 'application/octet-stream') : null;
         if ($mime !== null && in_array($mime, self::IMAGES, true)) {
             $dimensions = @getimagesize($path);
             if (!$dimensions || $dimensions[0] * $dimensions[1] > 40000000) {
@@ -76,7 +77,7 @@ final class Attachments
                 throw new \InvalidArgumentException('Invalid image or image exceeds 40 megapixels.');
             }
         }
-        $row->update(['received'=>$received, 'mime'=>$mime]);
+        Store::connection()->table('uploads')->where('id', $id)->update(['received'=>$received, 'mime'=>$mime]);
         return ['received'=>$received, 'mime'=>$mime];
     }
 
@@ -85,18 +86,18 @@ final class Attachments
         if (!is_array($ids) || !array_is_list($ids) || count($ids) > 10) throw new \InvalidArgumentException('Attach at most 10 files.');
         $files = [];
         foreach ($ids as $id) {
-            $id = Store::text($id, 32);
+            $id = Input::text($id, 32);
             if (isset($files[$id])) throw new \InvalidArgumentException('Duplicate attachment.');
-            $row = Upload::query()->whereKey($id)->where('user_id', $user)->whereColumn('received', 'size')->whereNotNull('mime')->where('expires', '>=', time())->first();
+            $row = Store::connection()->table('uploads')->into(Upload::class)->where('id', $id)->where('user_id', $user)->whereColumn('received', 'size')->whereNotNull('mime')->where('expires', '>=', time())->first();
             if (!$row || !is_file(self::path($id))) throw new \InvalidArgumentException('Attachment is not ready or has expired. Please attach it again.');
-            $files[$id] = $row->toArray();
+            $files[$id] = ['id'=>$row->id, 'user_id'=>$row->user_id, 'name'=>$row->name, 'size'=>$row->size, 'received'=>$row->received, 'mime'=>$row->mime, 'expires'=>$row->expires->getTimestamp()];
         }
         return array_values($files);
     }
 
     public static function saveAvatar(array $data): array
     {
-        $user = Store::text($data['user_id'] ?? null, 64);
+        $user = Input::text($data['user_id'] ?? null, 64);
         $file = self::pending([$data['id'] ?? null], $user)[0];
         $source = self::path($file['id']);
         $mime = (new \finfo(FILEINFO_MIME_TYPE))->file($source);
@@ -108,9 +109,9 @@ final class Attachments
         if (file_exists($target) || !rename($source, $target)) throw new \RuntimeException('Could not save avatar.');
         $url = '/auth/avatars/'.$name;
         try {
-            \support\Db::transaction(function () use ($user, $file, $url) {
-                if (!\app\model\User::query()->whereKey($user)->update(['avatar_url'=>$url])) throw new \InvalidArgumentException('User not found.');
-                Upload::query()->whereKey($file['id'])->delete();
+            \app\service\Store::transaction(function () use ($user, $file, $url) {
+                if (Store::connection()->table('users')->where('id', $user)->update(['avatar_url'=>$url]) < 1) throw new \InvalidArgumentException('User not found.');
+                Store::connection()->table('uploads')->where('id', $file['id'])->delete();
                 Store::notify();
             });
         } catch (\Throwable $error) { rename($target, $source); throw $error; }
@@ -142,7 +143,7 @@ final class Attachments
     public static function input(array $job): array
     {
         $items = [];
-        $files = empty($job['message_id']) ? [] : (Message::query()->whereKey($job['message_id'])->where('chat_id', $job['chat_id'])->first(['attachments'])?->attachments ?? []);
+        $files = empty($job['message_id']) ? [] : (Store::connection()->table('messages')->into(MessageAttachments::class)->where('id', $job['message_id'])->where('chat_id', $job['chat_id'])->first()?->attachments ?? []);
         $context = [];
         foreach ($files as $file) {
             $resolved = Artifacts::resolve($job['chat_id'], $file['stored']);

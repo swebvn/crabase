@@ -6,10 +6,9 @@ return [
         'sqlite' => [
             'driver' => 'sqlite',
             'database' => $config['database_path'],
-            'prefix' => '',
-            'foreign_key_constraints' => true,
-            'options' => [PDO::ATTR_TIMEOUT => 5],
-            'pool' => ['max_connections'=>5, 'min_connections'=>1],
+            'pool' => 1,
+            'timeout' => 5,
+            'migrations' => dirname(__DIR__).'/database/migrations',
         ],
     ],
 ];

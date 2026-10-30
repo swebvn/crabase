@@ -1,18 +1,22 @@
 <?php
 namespace app\service;
 
-use app\model\{Project, Chat, Account};
+use app\record\{Chat, Project};
 use InvalidArgumentException;
 
 final class ProjectAccess
 {
     public static function ids(array $actor): array
     {
-        if ($actor['admin']) return Project::query()->pluck('id')->all();
-        $roots = Project::query()->whereNull('parent_id')->where(function ($query) use ($actor) {
-            $query->where('visibility', 'public')->orWhereHas('members', fn($members) => $members->where('users.id', $actor['id']));
-        })->pluck('id')->all();
-        return Project::query()->whereIn('id', $roots)->orWhereIn('parent_id', $roots)->pluck('id')->all();
+        $db = Store::connection();
+        if ($actor['admin']) return $db->table('projects')->pluck('id');
+        $public = $db->table('projects')->whereNull('parent_id')->where('visibility', 'public')->pluck('id');
+        $member = Store::connection()->table('projects as p')->join('project_members as m', 'm.project_id', '=', 'p.id')
+            ->whereNull('p.parent_id')->where('m.user_id', $actor['id'])->pluck('p.id');
+        $roots = array_values(array_unique([...$public, ...$member]));
+        return $db->table('projects')->where(function ($query) use ($roots) {
+            $query->whereIn('id', $roots)->orWhereIn('parent_id', $roots);
+        })->pluck('id');
     }
 
     public static function project(array $actor, string $id): void
@@ -22,7 +26,7 @@ final class ProjectAccess
 
     public static function canChat(array $actor, string $id): bool
     {
-        $chat = Chat::query()->find($id);
+        $chat = Store::connection()->table('chats')->into(Chat::class)->find($id);
         return $chat && (!$chat->project_id || in_array($chat->project_id, self::ids($actor), true));
     }
 
@@ -45,21 +49,25 @@ final class ProjectAccess
     public static function sharing(array $actor, array $data, bool $save): array
     {
         if (!$actor['admin']) throw new InvalidArgumentException('Administrator access required.');
-        $project = Project::query()->find(Store::text($data['project_id'] ?? null, 64)) ?? throw new InvalidArgumentException('Project not found.');
+        $project = Store::connection()->table('projects')->into(Project::class)->find(Input::text($data['project_id'] ?? null, 64)) ?? throw new InvalidArgumentException('Project not found.');
         if ($project->parent_id) throw new InvalidArgumentException('Manage sharing on the original project.');
         if ($save) {
             $visibility = $data['visibility'] ?? null;
             $members = $data['members'] ?? null;
             if (!in_array($visibility, ['private', 'public'], true) || !is_array($members) || !array_is_list($members) || count($members) > 1000) throw new InvalidArgumentException('Invalid sharing settings.');
-            foreach ($members as $id) Store::text($id, 64);
+            foreach ($members as $id) Input::text($id, 64);
             $members = array_values(array_unique($members));
-            if (Account::query()->where('enabled', 1)->whereIn('user_id', $members)->count() !== count($members)) throw new InvalidArgumentException('Select enabled users only.');
-            \support\Db::transaction(function () use ($project, $visibility, $members) {
-                $project->update(['visibility'=>$visibility]);
-                $project->members()->sync($visibility === 'private' ? $members : []);
+            if (Store::connection()->table('accounts')->where('enabled', 1)->whereIn('user_id', $members)->count() !== count($members)) throw new InvalidArgumentException('Select enabled users only.');
+            \app\service\Store::transaction(function () use ($project, $visibility, $members) {
+                Store::connection()->table('projects')->into(Project::class)->where('id', $project->id)->update(['visibility'=>$visibility]);
+                Store::connection()->table('project_members')->where('project_id', $project->id)->delete();
+                if ($visibility === 'private' && $members !== []) {
+                    Store::connection()->table('project_members')->insertMany(array_map(fn(string $userId): array => ['project_id' => $project->id, 'user_id' => $userId], $members));
+                }
                 Store::notify();
             });
         }
-        return ['visibility'=>$project->visibility, 'members'=>$project->members()->pluck('users.id')->all()];
+        $visibility = Store::connection()->table('projects')->where('id', $project->id)->value('visibility');
+        return ['visibility'=>$visibility, 'members'=>Store::connection()->table('project_members')->where('project_id', $project->id)->pluck('user_id')];
     }
 }

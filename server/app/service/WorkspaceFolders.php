@@ -15,7 +15,7 @@ final class WorkspaceFolders
     public static function resolve(mixed $value, bool $allowRoot = false): string
     {
         $root = self::root();
-        $value = Store::text($value, 4096);
+        $value = Input::text($value, 4096);
         if (str_contains($value, "\0")) throw new InvalidArgumentException('Invalid folder path.');
         $path = realpath($value);
         if (!$path || !is_dir($path) || !is_readable($path) || ($path !== $root && !str_starts_with($path, $root.'/'))) {
