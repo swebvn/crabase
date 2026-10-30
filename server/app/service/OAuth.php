@@ -62,7 +62,8 @@ final class OAuth
     {
         $headers = ['Accept' => 'application/json'];
         if ($token !== null) $headers['Authorization'] = 'Bearer '.$token;
-        $client = new Client(timeout: 15.0, maxBytes: 1_000_000);
+        // OAuth requests carry secrets and authorization codes; never forward them to a redirected host.
+        $client = new Client(timeout: 15.0, redirects: 0, maxBytes: 1_000_000);
         $response = $client->request($form === null ? 'GET' : 'POST', $url, headers: $headers, form: $form ?? []);
         if (!$response->ok()) throw new InvalidArgumentException('OAuth provider request failed. Please try again.');
         $result = $response->json();

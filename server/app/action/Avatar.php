@@ -18,6 +18,7 @@ final class Avatar
         }
 
         return Response::download($path, basename($path), mime_content_type($path) ?: 'application/octet-stream')
+            ->withHeader('Content-Disposition', "inline; filename*=UTF-8''" . rawurlencode(basename($path)))
             ->withHeader('X-Content-Type-Options', 'nosniff')
             ->withHeader('Content-Security-Policy', "sandbox; default-src 'none'")
             ->withHeader('Cache-Control', 'private, no-store')
