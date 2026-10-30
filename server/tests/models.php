@@ -69,13 +69,13 @@ try {
     check($revision() === $before);
     $message = S::connection()->table('messages')->into(Message::class)->where('chat_id', $chat)->first();
     $original = $message->body;
-    S::appendBody($message->id, "'quoted' \nΔ");
+    \app\service\MessageBody::append($message->id, "'quoted' \nΔ");
     check(S::connection()->table('messages')->where('id', $message->id)->value('body') === $original."'quoted' \nΔ" && $revision() === $before + 1);
     $before = $revision();
     try {
         S::transaction(function () use ($message) {
-            S::appendBody($message->id, 'rolled back');
-            S::put('rollback-test', 'value');
+            \app\service\MessageBody::append($message->id, 'rolled back');
+            S::notify(S::connection()->table('settings')->upsert([['key'=>'rollback-test', 'value'=>'value']], ['key'], ['value']));
             throw new RuntimeException('rollback');
         });
     } catch (RuntimeException) {}

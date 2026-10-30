@@ -335,7 +335,7 @@ final class Codex
 
     private function status(string $value): void
     {
-        Store::put('runtime', $value);
+        Store::notify(Store::connection()->table('settings')->upsert([['key' => 'runtime', 'value' => $value]], ['key'], ['value']));
     }
     private function send(array $message): void
     {
@@ -681,7 +681,7 @@ final class Codex
         }
         if (($m['method'] ?? '') === 'item/agentMessage/delta') {
             $id = $this->item($jobId, $p['itemId'], 'assistant', Store::agentName(), '');
-            Store::appendBody($id, $p['delta']);
+            \app\service\MessageBody::append($id, $p['delta']);
         }
         if (in_array($m['method'] ?? '', ['item/started','item/completed'])) {
             $item = $p['item'];

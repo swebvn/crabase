@@ -62,16 +62,6 @@ final class Store
         self::connection()->execute("INSERT INTO settings VALUES ('revision','1') ON CONFLICT(key) DO UPDATE SET value=CAST(value AS INTEGER)+1");
     }
 
-    public static function put(string $key, string $value): void
-    {
-        self::notify(self::connection()->table('settings')->upsert([['key' => $key, 'value' => $value]], ['key'], ['value']));
-    }
-
-    public static function appendBody(int $id, string $delta): void
-    {
-        // Streaming deltas must be appended atomically; a read/modify/write loses concurrent chunks.
-        self::notify(self::connection()->execute('UPDATE messages SET body=body || ? WHERE id=?', [$delta, $id]));
-    }
 
 
     public static function event(?string $chat, string $label): void
