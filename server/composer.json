@@ -10,13 +10,14 @@
   "description": "CrabPHP backend for the Crabase shared coding workspace.",
   "require": {
     "php": ">=8.4",
-    "crabphp/framework": "^0.2",
+    "crabphp/framework": "@dev",
     "robmorgan/phinx": "^0.16"
   },
   "repositories": [
     {
-      "type": "vcs",
-      "url": "https://github.com/crabphp/framework"
+      "type": "path",
+      "url": "/home/daudau/Code/crabphp/framework",
+      "options": {"symlink": true}
     }
   ],
   "autoload": {
