@@ -5,7 +5,6 @@ namespace app\process;
 use app\service\Store;
 use app\service\Auth;
 use app\service\{Input, ProjectAccess, ModelCatalog};
-use app\model\{Job, Chat, Message, Approval, Project, Setting};
 use Crab\Contracts\Log\Logger;
 use Crab\Engine\EventLoop;
 use Crab\Engine\Http\Request;
@@ -52,13 +51,14 @@ final class Codex
     {
         $this->loop = $worker->loop;
         Store::db();
-        Store::notify(Job::query()->where('status', 'running')->update(['status'=>'failed']));
-        Store::notify(Chat::query()->whereIn('status', ['running','approval'])->update(['status'=>'idle']));
-        Store::notify(Approval::query()->whereNull('decision')->update(['decision'=>'decline']));
-        foreach (Message::query()->where('role', 'agent_activity')->get(['id','body']) as $row) {
+        $db = Store::connection();
+        Store::notify($db->table('jobs')->where('status', 'running')->update(['status'=>'failed']));
+        Store::notify($db->table('chats')->whereIn('status', ['running','approval'])->update(['status'=>'idle']));
+        Store::notify($db->table('approvals')->whereNull('decision')->update(['decision'=>'decline']));
+        foreach ($db->table('messages')->where('role', 'agent_activity')->select('id','body')->get() as $row) {
             $activity = json_decode($row['body'], true);
             if (!empty($activity['active'])) {
-                Store::notify($row->update(['body'=>json_encode(\app\service\AgentActivity::finish($activity), JSON_INVALID_UTF8_SUBSTITUTE)]));
+                Store::notify($db->table('messages')->where('id', $row['id'])->update(['body'=>json_encode(\app\service\AgentActivity::finish($activity), JSON_INVALID_UTF8_SUBSTITUTE)]));
             }
         }
         $this->status('ready');
@@ -207,7 +207,7 @@ final class Codex
             } else {
                 $m['data']['user_id'] = $actor['id'];
                 if ($m['action'] === 'projectDelete') {
-                    $chatIds = Chat::query()->where('project_id', Input::text($m['data']['project_id'] ?? null, 64))->pluck('id');
+                    $chatIds = Store::connection()->table('chats')->where('project_id', Input::text($m['data']['project_id'] ?? null, 64))->pluck('id');
                     foreach ($this->terminals as $terminal) {
                         if ($terminal['running'] && in_array($terminal['chat_id'], $chatIds, true)) throw new \InvalidArgumentException('Close this workspace’s terminals before deleting it.');
                     }
@@ -239,7 +239,7 @@ final class Codex
     // ponytail: compare subscribed history rows; use database cursors if long histories make this slow.
     private function publish(): void
     {
-        $revision = Setting::query()->whereKey('revision')->value('value') ?? '';
+        $revision = Store::connection()->table('settings')->where('key', 'revision')->value('value') ?? '';
         if ($revision === $this->revision) {
             return;
         }
@@ -313,10 +313,11 @@ final class Codex
         $checks[] = ['name'=>'Codex app-server', 'status'=>$running && $this->ready ? 'ok' : 'warning',
             'detail'=>$running ? ($this->ready ? 'Initialized and running' : 'Starting; not ready yet') : ($this->bootAttempted ? 'Not running' : 'Not started yet')];
         try {
+            $db = Store::connection();
             $models = ModelCatalog::all();
             $checks[] = ['name'=>'Database', 'status'=>'ok', 'detail'=>'Read query succeeded'];
             $checks[] = ['name'=>'Models', 'status'=>$models ? 'ok' : 'warning', 'detail'=>count($models).' models in memory; refreshes every 30 minutes'];
-            $checks[] = ['name'=>'Agent queue', 'status'=>'ok', 'detail'=>Job::query()->where('status', 'running')->count().' running · '.Job::query()->where('status', 'queued')->count().' queued'];
+            $checks[] = ['name'=>'Agent queue', 'status'=>'ok', 'detail'=>$db->table('jobs')->where('status', 'running')->count().' running · '.$db->table('jobs')->where('status', 'queued')->count().' queued'];
         } catch (\Throwable) {
             $checks[] = ['name'=>'Database', 'status'=>'error', 'detail'=>'Unable to read database'];
         }
@@ -334,7 +335,7 @@ final class Codex
 
     private function status(string $value): void
     {
-        Setting::put('runtime', $value);
+        Store::put('runtime', $value);
     }
     private function send(array $message): void
     {
@@ -428,26 +429,27 @@ final class Codex
             }
             foreach (array_keys($this->jobs) as $jobId) {
                 foreach ($this->jobs[$jobId]['approvals'] as $approvalId => $rpcId) {
-                    $decision = Approval::query()->whereKey($approvalId)->value('decision');
+                    $decision = Store::connection()->table('approvals')->where('id', $approvalId)->value('decision');
                     if ($decision) {
                         $this->send(['id' => $rpcId,'result' => ['decision' => $decision]]);
                         unset($this->jobs[$jobId]['approvals'][$approvalId]);
                         if (!$this->jobs[$jobId]['approvals']) {
-                            Store::notify(Chat::query()->whereKey($this->jobs[$jobId]['chat_id'])->update(['status'=>'running']));
+                            Store::notify(Store::connection()->table('chats')->where('id', $this->jobs[$jobId]['chat_id'])->update(['status'=>'running']));
                         }
                     }
                 }
-                $row = Job::query()->findOrFail($jobId, ['cancel','turn_id']);
+                $row = Store::connection()->table('jobs')->where('id', $jobId)->select('cancel','turn_id')->first();
+                if (!$row) throw new \RuntimeException('Queued job disappeared.');
                 if ($row['cancel'] && !empty($row['turn_id']) && empty($this->jobs[$jobId]['interrupting'])) {
                     $this->jobs[$jobId]['interrupting'] = true;
                     $this->rpc('turn/interrupt', ['threadId' => $this->jobs[$jobId]['thread_id'],'turnId' => $row['turn_id']], fn ($result) => null, $jobId);
                 }
             }
             $this->steerActiveJobs();
-            Store::notify(Job::query()->where('status', 'queued')->where('cancel', 1)->update(['status'=>'cancelled']));
+            Store::notify(Store::connection()->table('jobs')->where('status', 'queued')->where('cancel', 1)->update(['status'=>'cancelled']));
             $active = Store::connection()->table('jobs')->selectRaw('1')
                 ->whereColumn('jobs.chat_id', 'chats.id')->whereIn('jobs.status', ['queued', 'running']);
-            Store::notify(Chat::query()->from('chats')->where('status', 'queued')
+            Store::notify(Store::connection()->table('chats')->where('status', 'queued')
                 ->whereNotExists($active)->update(['status'=>'idle']));
             $limit = (require dirname(__DIR__, 2).'/config/crabase.php')['parallel_chats'];
             if (count($this->jobs) >= $limit) {
@@ -483,7 +485,13 @@ final class Codex
 
     private function nextJobs(int $limit): array
     {
-        return Job::nextQueued($limit);
+        $db = Store::connection();
+        $active = $db->table('jobs as active')->selectRaw('1')->whereColumn('active.chat_id', 'j.chat_id')->where('active.status', 'running');
+        $earlier = $db->table('jobs as earlier')->selectRaw('1')->whereColumn('earlier.chat_id', 'j.chat_id')->where('earlier.status', 'queued')->where('earlier.cancel', 0)->whereColumn('earlier.id', '<', 'j.id');
+        return $db->table('jobs as j')->select('j.*', 'c.thread_id', 'p.path')
+            ->join('chats as c', 'c.id', '=', 'j.chat_id')->leftJoin('projects as p', 'p.id', '=', 'c.project_id')
+            ->where('j.status', 'queued')->where('j.cancel', 0)->whereNotExists($active)->whereNotExists($earlier)
+            ->orderBy('j.id')->limit($limit)->get();
     }
 
     private function steerActiveJobs(): void
@@ -494,8 +502,8 @@ final class Codex
                 unset($active);
                 continue;
             }
-            $next = Job::query()->where('chat_id', $active['chat_id'])->where('status', 'queued')
-                ->where('cancel', 0)->whereNotNull('message_id')->orderBy('id')->first()?->toArray();
+            $next = Store::connection()->table('jobs')->where('chat_id', $active['chat_id'])->where('status', 'queued')
+                ->where('cancel', 0)->whereNotNull('message_id')->orderBy('id')->first();
             if (!$next) {
                 unset($active);
                 continue;
@@ -509,7 +517,7 @@ final class Codex
                 ], \app\service\Attachments::input($next)),
             ], function () use ($activeId, $next) {
                 if (!isset($this->jobs[$activeId])) return;
-                Store::notify(Job::query()->whereKey($next['id'])->update(['status'=>'done']));
+                Store::notify(Store::connection()->table('jobs')->where('id', $next['id'])->update(['status'=>'done']));
                 Store::event($next['chat_id'], Store::agentName().' received a steering message');
                 $this->jobs[$activeId]['steering'] = false;
             }, $activeId, (int)$next['id']);
@@ -521,11 +529,12 @@ final class Codex
     {
         $jobId = (int)$next['id'];
         $this->jobs[$jobId] = $next + ['items' => [], 'approvals' => [], 'activity' => []];
-        Store::notify(Job::query()->whereKey($jobId)->update(['status'=>'running']));
-        Store::notify(Chat::query()->whereKey($next['chat_id'])->update(['status'=>'running']));
+        Store::notify(Store::connection()->table('jobs')->where('id', $jobId)->update(['status'=>'running']));
+        Store::notify(Store::connection()->table('chats')->where('id', $next['chat_id'])->update(['status'=>'running']));
         try {
-            $project = Chat::query()->find($next['chat_id'])?->project;
-            if ($project?->parent_id) $next['path'] = $project->workspacePath();
+            $chat = Store::connection()->table('chats')->where('id', $next['chat_id'])->first();
+            $project = $chat && $chat['project_id'] ? Store::connection()->table('projects')->where('id', $chat['project_id'])->first() : null;
+            if ($project && $project['parent_id']) $next['path'] = \app\service\ProjectWorkspace::workspacePath($project);
             if (!$next['path']) {
                 $workspaceRoot = realpath(config('crabase.workspace_root'));
                 if (!$workspaceRoot || !is_dir($workspaceRoot)) throw new \RuntimeException('Workspace folder is unavailable.');
@@ -551,8 +560,8 @@ final class Codex
                 }
                 $thread = $result['thread']['id'];
                 $this->jobs[$jobId]['thread_id'] = $thread;
-                Store::notify(Chat::query()->whereKey($this->jobs[$jobId]['chat_id'])->update(['thread_id'=>$thread]));
-                if (Job::query()->whereKey($jobId)->value('cancel')) {
+                Store::notify(Store::connection()->table('chats')->where('id', $this->jobs[$jobId]['chat_id'])->update(['thread_id'=>$thread]));
+                if (Store::connection()->table('jobs')->where('id', $jobId)->value('cancel')) {
                     $this->finish($jobId, 'cancelled');
                     return;
                 }
@@ -569,7 +578,7 @@ final class Codex
                         return;
                     }
                     $this->jobs[$jobId]['turn_id'] = $result['turn']['id'];
-                    Store::notify(Job::query()->whereKey($jobId)->update(['turn_id'=>$result['turn']['id']]));
+                    Store::notify(Store::connection()->table('jobs')->where('id', $jobId)->update(['turn_id'=>$result['turn']['id']]));
                 }, $jobId);
             }, $jobId);
         } catch (\Throwable $error) {
@@ -603,7 +612,7 @@ final class Codex
                 $error = $m['error']['message'] ?? 'Codex request failed.';
                 if ($pending['method'] === 'turn/steer') {
                     if ($pending['related_job_id'] !== null) {
-                        Store::notify(Job::query()->whereKey($pending['related_job_id'])->update(['status'=>'failed']));
+                        Store::notify(Store::connection()->table('jobs')->where('id', $pending['related_job_id'])->update(['status'=>'failed']));
                     }
                     if ($jobId !== null && isset($this->jobs[$jobId])) {
                         $this->jobs[$jobId]['steering'] = false;
@@ -639,10 +648,10 @@ final class Codex
                     $this->jobs[$jobId]['activity']['agents'][$agentId]['status'] = 'waiting';
                     $this->saveAgentActivity($jobId);
                 }
-                $id = Approval::query()->create(['chat_id'=>$this->jobs[$jobId]['chat_id'], 'rpc_id'=>json_encode($m['id']), 'method'=>$m['method'], 'details'=>json_encode($m['params'], JSON_INVALID_UTF8_SUBSTITUTE)])->id;
+                $id = Store::connection()->table('approvals')->insert(['chat_id'=>$this->jobs[$jobId]['chat_id'], 'rpc_id'=>json_encode($m['id']), 'method'=>$m['method'], 'details'=>json_encode($m['params'], JSON_INVALID_UTF8_SUBSTITUTE)]);
                 Store::notify();
                 $this->jobs[$jobId]['approvals'][$id] = $m['id'];
-                Store::notify(Chat::query()->whereKey($this->jobs[$jobId]['chat_id'])->update(['status'=>'approval']));
+                Store::notify(Store::connection()->table('chats')->where('id', $this->jobs[$jobId]['chat_id'])->update(['status'=>'approval']));
             } else {
                 $this->send(['id' => $m['id'],'error' => ['code' => -32601,'message' => 'This client does not support this interaction yet.']]);
             }
@@ -664,7 +673,7 @@ final class Codex
                 return;
             }
             $this->jobs[$jobId]['turn_id'] = $p['turn']['id'];
-            Store::notify(Job::query()->whereKey($jobId)->update(['turn_id'=>$p['turn']['id']]));
+            Store::notify(Store::connection()->table('jobs')->where('id', $jobId)->update(['turn_id'=>$p['turn']['id']]));
         }
         $eventTurn = $p['turnId'] ?? $p['turn']['id'] ?? null;
         if ($eventTurn !== null && $eventTurn !== ($this->jobs[$jobId]['turn_id'] ?? null)) {
@@ -672,7 +681,7 @@ final class Codex
         }
         if (($m['method'] ?? '') === 'item/agentMessage/delta') {
             $id = $this->item($jobId, $p['itemId'], 'assistant', Store::agentName(), '');
-            Message::appendBody($id, $p['delta']);
+            Store::appendBody($id, $p['delta']);
         }
         if (in_array($m['method'] ?? '', ['item/started','item/completed'])) {
             $item = $p['item'];
@@ -683,12 +692,12 @@ final class Codex
             }
             if ($type === 'agentMessage' && isset($item['text'])) {
                 $id = $this->item($jobId, $item['id'], 'assistant', Store::agentName(), '');
-                Store::notify(Message::query()->whereKey($id)->update(['body'=>$item['text']]));
+                Store::notify(Store::connection()->table('messages')->where('id', $id)->update(['body'=>$item['text']]));
             }
             if ($type === 'commandExecution') {
                 $body = ($item['command'] ?? 'Command') . "\n" . substr($item['aggregatedOutput'] ?? '', -16000);
                 $id = $this->item($jobId, $item['id'], 'tool', 'Terminal', $body);
-                Store::notify(Message::query()->whereKey($id)->update(['body'=>$body]));
+                Store::notify(Store::connection()->table('messages')->where('id', $id)->update(['body'=>$body]));
             }
             if ($type === 'fileChange') {
                 $body = implode("\n", array_map(fn ($c) => $c['path'] ?? 'File changed', $item['changes'] ?? []));
@@ -706,12 +715,12 @@ final class Codex
             return;
         }
         $id = $this->item($jobId, 'agent-activity', 'agent_activity', Store::agentName(), '');
-        Store::notify(Message::query()->whereKey($id)->update(['body'=>json_encode($this->jobs[$jobId]['activity'], JSON_INVALID_UTF8_SUBSTITUTE)]));
+        Store::notify(Store::connection()->table('messages')->where('id', $id)->update(['body'=>json_encode($this->jobs[$jobId]['activity'], JSON_INVALID_UTF8_SUBSTITUTE)]));
     }
     private function item(int $jobId, string $key, string $role, string $author, string $body): int
     {
         if (!isset($this->jobs[$jobId]['items'][$key])) {
-            $this->jobs[$jobId]['items'][$key] = Message::query()->create(['chat_id'=>$this->jobs[$jobId]['chat_id'], 'role'=>$role, 'author'=>$author, 'body'=>$body, 'created_at'=>gmdate('c')])->id;
+            $this->jobs[$jobId]['items'][$key] = Store::connection()->table('messages')->insert(['chat_id'=>$this->jobs[$jobId]['chat_id'], 'role'=>$role, 'author'=>$author, 'body'=>$body, 'created_at'=>gmdate('c')]);
             Store::notify();
         }
         return $this->jobs[$jobId]['items'][$key];
@@ -726,10 +735,10 @@ final class Codex
         if ($error) {
             $this->item($jobId, 'error-'.microtime(true), 'error', Store::agentName(), $error);
         }
-        Store::notify(Job::query()->whereKey($jobId)->update(['status'=>$status]));
-        $queued = Job::query()->where('chat_id', $chat)->where('status', 'queued')->exists();
-        Store::notify(Chat::query()->whereKey($chat)->update(['status'=>$queued ? 'queued' : 'idle', 'updated_at'=>gmdate('c')]));
-        Store::notify(Approval::query()->where('chat_id', $chat)->whereNull('decision')->update(['decision'=>'decline']));
+        Store::notify(Store::connection()->table('jobs')->where('id', $jobId)->update(['status'=>$status]));
+        $queued = Store::connection()->table('jobs')->where('chat_id', $chat)->where('status', 'queued')->exists();
+        Store::notify(Store::connection()->table('chats')->where('id', $chat)->update(['status'=>$queued ? 'queued' : 'idle', 'updated_at'=>gmdate('c')]));
+        Store::notify(Store::connection()->table('approvals')->where('chat_id', $chat)->whereNull('decision')->update(['decision'=>'decline']));
         Store::event($chat, Store::agentName().' turn '.$status);
         foreach ($this->jobs[$jobId]['approvals'] as $rpcId) {
             $this->send(['id' => $rpcId,'result' => ['decision' => 'decline']]);
@@ -787,12 +796,12 @@ final class Codex
         if (!$actor) throw new \InvalidArgumentException('Authentication required.');
         ProjectAccess::chat($actor, $chatId);
         if ($action === 'terminalOpen') {
-            $row = Chat::query()->find($chatId);
+            $row = Store::connection()->table('chats')->where('id', $chatId)->first();
             if (!$row) {
                 throw new \InvalidArgumentException('Conversation not found.');
             }
-            $project = $row->project_id === null ? null : Project::query()->find($row->project_id);
-            $path = $project?->workspacePath();
+            $project = $row['project_id'] === null ? null : Store::connection()->table('projects')->where('id', $row['project_id'])->first();
+            $path = $project && $project['parent_id'] ? \app\service\ProjectWorkspace::workspacePath($project) : ($project ? \app\service\WorkspaceFolders::resolve($project['path']) : null);
             if (!$path) {
                 $workspaceRoot = realpath(config('crabase.workspace_root'));
                 if (!$workspaceRoot || !is_dir($workspaceRoot)) throw new \RuntimeException('Workspace folder is unavailable.');

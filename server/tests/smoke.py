@@ -172,7 +172,7 @@ if __name__=='__main__':
         assert second.call('sync',{'chat_id':owned})['thread']['messages'][0]['body']=='Delete fixture'
         # Child workspaces inherit both grants and revocation from the original project.
         child=uuid.uuid4().hex[:16]
-        subprocess.run(['php','-r',"require 'vendor/autoload.php'; app\\service\\Store::db(); app\\model\\Project::query()->create(['id'=>$argv[1],'name'=>'Child','path'=>$argv[2], 'parent_id'=>$argv[3]]); app\\service\\Store::notify();",child,temp+'/child',project_id],cwd=server,check=True)
+        subprocess.run(['php','-r',"require 'vendor/autoload.php'; app\\service\\Store::connection()->table('projects')->insert(['id'=>$argv[1],'name'=>'Child','path'=>$argv[2], 'parent_id'=>$argv[3]]); app\\service\\Store::notify();",child,temp+'/child',project_id],cwd=server,check=True)
         child_chat=first.call('create',{'project_id':child})['id']
         assert second.call('sync',{'chat_id':child_chat})['thread']['chat']['project_id']==child
         second.events.clear()
@@ -186,7 +186,7 @@ if __name__=='__main__':
         first.call('projectSharingSave',{'project_id':project_id,'visibility':'public','members':[]})
         assert second.call('sync',{'chat_id':child_chat})['thread']['chat']['project_id']==child
         second.call('projectSharingSave',{'project_id':project_id,'visibility':'private','members':[]},error=True)
-        subprocess.run(['php','-r',"require 'vendor/autoload.php'; app\\service\\Store::db(); app\\model\\Event::query()->where('chat_id',$argv[1])->delete(); app\\model\\Chat::query()->whereKey($argv[1])->delete(); app\\model\\Project::query()->whereKey($argv[2])->delete(); app\\service\\Store::notify();",child_chat,child],cwd=server,check=True)
+        subprocess.run(['php','-r',"require 'vendor/autoload.php'; $db=app\\service\\Store::connection(); $db->table('events')->where('chat_id',$argv[1])->delete(); $db->table('chats')->where('id',$argv[1])->delete(); $db->table('projects')->where('id',$argv[2])->delete(); app\\service\\Store::notify();",child_chat,child],cwd=server,check=True)
         second.call('sync',{'chat_id':owned})
         second.call('projectArchive',{'project_id':project_id,'archived':True},error=True)
         second.call('projectDelete',{'project_id':project_id},error=True)

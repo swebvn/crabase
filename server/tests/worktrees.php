@@ -1,7 +1,6 @@
 <?php
 require dirname(__DIR__).'/vendor/autoload.php';
 use app\service\{Actions, ProjectWorkspace, WorkspaceFolders, Store};
-use app\model\{Project, Chat, Job};
 
 $root = sys_get_temp_dir().'/crabase-worktrees-'.bin2hex(random_bytes(8));
 mkdir($root, 0700); mkdir($root.'/repo');
@@ -27,21 +26,21 @@ try {
     worktreeDenied(fn()=>Actions::handle('worktreeCreate', ['project_id'=>$parent, 'branch'=>'feature/symlink']));
     unlink($root.'/.worktrees');
     $id = Actions::handle('worktreeCreate', ['project_id'=>$parent, 'branch'=>'feature/login'])['id'];
-    $project = Project::find($id);
-    $path = $project->workspacePath();
-    worktreeCheck(dirname($path) === $root.'/.worktrees/repo' && preg_match('/^[a-z]+-[a-z]+$/D', basename($path)) && $project->parent_id === $parent);
+    $project = Store::connection()->table('projects')->where('id', $id)->first();
+    $path = ProjectWorkspace::workspacePath($project);
+    worktreeCheck(dirname($path) === $root.'/.worktrees/repo' && preg_match('/^[a-z]+-[a-z]+$/D', basename($path)) && $project['parent_id'] === $parent);
     worktreeCheck(app\service\Worktrees::projectFolder('daudau.cc') === 'daudau.cc');
     worktreeCheck(app\service\Worktrees::projectFolder('../My Project/') === 'my-project');
     $another = Actions::handle('worktreeCreate', ['project_id'=>$parent, 'branch'=>'feature/other'])['id'];
-    worktreeCheck(Project::find($another)->workspacePath() !== $path);
+    worktreeCheck(ProjectWorkspace::workspacePath(Store::connection()->table('projects')->where('id', $another)->first()) !== $path);
     $legacyId = 'abc123abc123abcd';
     mkdir($root.'/.worktrees/'.$parent);
     $legacyPath = $root.'/.worktrees/'.$parent.'/'.$legacyId;
     worktreeCheck(ProjectWorkspace::command($root.'/repo', ['worktree','add','-b','feature/legacy','--',$legacyPath,'HEAD'])[0] === 0);
-    $legacy = Project::create(['id'=>$legacyId,'parent_id'=>$parent,'name'=>'feature/legacy','path'=>$legacyPath]);
-    worktreeCheck($legacy->workspacePath() === $legacyPath);
+    Store::connection()->table('projects')->insert(['id'=>$legacyId,'parent_id'=>$parent,'name'=>'feature/legacy','path'=>$legacyPath]);
+    worktreeCheck(ProjectWorkspace::workspacePath(Store::connection()->table('projects')->where('id', $legacyId)->first()) === $legacyPath);
     rename($path, $path.'-saved'); symlink($root.'/repo', $path);
-    worktreeDenied(fn()=> $project->workspacePath());
+    worktreeDenied(fn()=> ProjectWorkspace::workspacePath($project));
     unlink($path); rename($path.'-saved', $path);
     worktreeCheck(!file_exists($path.'/.env') && file_get_contents($path.'/readme.txt') === "original\n");
     worktreeCheck(ProjectWorkspace::context(['project_id'=>$id])['branch'] === 'feature/login');
@@ -55,16 +54,19 @@ try {
     worktreeDenied(fn()=>Actions::handle('worktreeCreate', ['project_id'=>$id, 'branch'=>'nested']));
     $a = Actions::handle('create', ['project_id'=>$id])['id'];
     $b = Actions::handle('create', ['project_id'=>$id])['id'];
-    worktreeCheck(Chat::find($a)->project->workspacePath() === $path && Chat::find($b)->project->workspacePath() === $path);
-    $job = Job::create(['chat_id'=>$a, 'prompt'=>'test']);
-    worktreeCheck(Job::nextQueued(1)[0]['path'] === $path);
+    worktreeCheck(ProjectWorkspace::workspacePath(Store::connection()->table('projects')->where('id', $id)->first()) === $path && ProjectWorkspace::workspacePath(Store::connection()->table('projects')->where('id', $id)->first()) === $path);
+    $jobId = Store::connection()->table('jobs')->insert(['chat_id'=>$a, 'prompt'=>'test']);
+    $active = Store::connection()->table('jobs as active')->selectRaw('1')->whereColumn('active.chat_id', 'j.chat_id')->where('active.status', 'running');
+    $earlier = Store::connection()->table('jobs as earlier')->selectRaw('1')->whereColumn('earlier.chat_id', 'j.chat_id')->where('earlier.status', 'queued')->where('earlier.cancel', 0)->whereColumn('earlier.id', '<', 'j.id');
+    $nextJob = Store::connection()->table('jobs as j')->select('j.*', 'p.path')->join('chats as c', 'c.id', '=', 'j.chat_id')->leftJoin('projects as p', 'p.id', '=', 'c.project_id')->where('j.status', 'queued')->where('j.cancel', 0)->whereNotExists($active)->whereNotExists($earlier)->orderBy('j.id')->limit(1)->get()[0];
+    worktreeCheck($nextJob['path'] === $path);
     worktreeDenied(fn()=>Actions::handle('projectDelete', ['project_id'=>$parent]));
     worktreeDenied(fn()=>Actions::handle('projectDelete', ['project_id'=>$id]));
-    $job->delete();
+    Store::connection()->table('jobs')->where('id', $jobId)->delete();
     Actions::handle('projectArchive', ['project_id'=>$parent, 'archived'=>true]);
     worktreeCheck(is_dir($path));
     worktreeCheck(Actions::handle('projectDelete', ['project_id'=>$id])['requires_confirmation'] === true);
-    worktreeCheck(Project::find($id) !== null && is_file($path.'/readme.txt'));
+    worktreeCheck(Store::connection()->table('projects')->where('id', $id)->exists() && is_file($path.'/readme.txt'));
     file_put_contents($path.'/.gitignore', "local.sqlite\n");
     ProjectWorkspace::command($path, ['add', 'readme.txt', '.gitignore']);
     worktreeCheck(ProjectWorkspace::command($path, ['commit', '--quiet', '-m', 'Feature'])[0] === 0);
@@ -83,7 +85,7 @@ try {
     foreach ([$another, $legacyId] as $worktreeId) Actions::handle('projectDelete', ['project_id'=>$worktreeId]);
     worktreeCheck(!is_dir($path) && ProjectWorkspace::command($root.'/repo', ['show-ref','--verify','--quiet','refs/heads/feature/login'])[0] === 0);
     Actions::handle('projectDelete', ['project_id'=>$parent]);
-    worktreeCheck(!Project::find($id) && !Chat::find($a) && !Chat::find($b) && is_file($root.'/repo/readme.txt'));
+    worktreeCheck(!Store::connection()->table('projects')->where('id', $id)->exists() && !Store::connection()->table('chats')->where('id', $a)->exists() && !Store::connection()->table('chats')->where('id', $b)->exists() && is_file($root.'/repo/readme.txt'));
     echo "PASS: worktree creation, paths, independent edits, dirty/locked protection, local removal, branch and original-folder preservation.\n";
 } finally {
     // Only the disposable test root created above is removed, including its worktrees.

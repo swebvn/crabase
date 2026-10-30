@@ -58,7 +58,7 @@ try {
     A::handle('uploadChunk', ['user_id'=>'uploader','id'=>$avatar,'offset'=>0,'bytes'=>base64_encode($png)]);
     rejected(fn () => A::handle('avatarSave', ['user_id'=>'other','id'=>$avatar]));
     $result = A::handle('avatarSave', ['user_id'=>'uploader','id'=>$avatar]);
-    attachmentCheck(\app\model\User::query()->find('uploader')->avatar_url === $result['avatar_url']);
+    attachmentCheck(S::connection()->table('users')->where('id', 'uploader')->value('avatar_url') === $result['avatar_url']);
     attachmentCheck(file_get_contents(\app\service\Avatars::resolve(basename($result['avatar_url']))) === $png);
     attachmentCheck(\app\service\Avatars::resolve('../test.sqlite') === null);
     rejected(fn () => A::handle('avatarSave', ['user_id'=>'uploader','id'=>$avatar]));

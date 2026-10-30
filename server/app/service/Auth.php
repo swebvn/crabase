@@ -2,8 +2,7 @@
 namespace app\service;
 
 use InvalidArgumentException;
-use app\model\{Account, AuthSession, User, Message};
-
+use app\record\Account;
 final class Auth
 {
     public const COOKIE = 'crabase_session';
@@ -13,8 +12,8 @@ final class Auth
     {
         if (!$token || !preg_match('/^[a-f0-9]{64}$/D', $token)) return null;
         Store::db();
-        $user = AuthSession::query()->from('auth_sessions as s')->join('accounts as a', 'a.user_id', '=', 's.user_id')->join('users as u', 'u.id', '=', 'a.user_id')
-            ->where('s.token_hash', hash('sha256', $token))->where('s.expires', '>', time())->where('a.enabled', 1)->selectRaw(self::FIELDS)->first()?->toArray();
+        $user = Store::connection()->table('auth_sessions as s')->join('accounts as a', 'a.user_id', '=', 's.user_id')->join('users as u', 'u.id', '=', 'a.user_id')
+            ->where('s.token_hash', hash('sha256', $token))->where('s.expires', '>', time())->where('a.enabled', 1)->selectRaw(self::FIELDS)->first();
         if ($user) {
             $user['avatar_required'] = $user['avatar_url'] === '';
             $user['avatar_fallback'] = self::avatar($user['email']);
@@ -73,31 +72,31 @@ final class Auth
         if ($attempt >= 10) throw new InvalidArgumentException('Too many attempts. Try again in 15 minutes.');
         // Atomic increment preserves attempts from concurrent HTTP workers.
         \app\service\Store::connection()->execute('INSERT INTO login_attempts VALUES (?,1,?) ON CONFLICT(key) DO UPDATE SET attempts=attempts+1', [$key, time()+900]);
-        $account = Account::query()->where('email', substr($email, 0, 254))->first();
-        $valid = is_string($password) && strlen($password) <= 72 && password_verify($password, $account['password_hash'] ?? '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2uheWG/igi.');
-        if (!$valid || !$account || !$account['enabled']) throw new InvalidArgumentException('Invalid email or password.');
+        $account = Store::connection()->table('accounts')->into(Account::class)->where('email', substr($email, 0, 254))->first();
+        $valid = is_string($password) && strlen($password) <= 72 && password_verify($password, $account?->password_hash ?? '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2uheWG/igi.');
+        if (!$valid || !$account || !$account->enabled) throw new InvalidArgumentException('Invalid email or password.');
         \app\service\Store::connection()->table('login_attempts')->where('key', $key)->delete();
-        return self::session($account['user_id']);
+        return self::session($account->user_id);
     }
     public static function session(string $id): string
     {
         Store::db();
-        if (!Account::query()->whereKey($id)->where('enabled', 1)->exists()) throw new InvalidArgumentException('Account is disabled.');
-        AuthSession::query()->where('expires', '<', time())->delete();
+        if (!Store::connection()->table('accounts')->where('user_id', $id)->where('enabled', 1)->exists()) throw new InvalidArgumentException('Account is disabled.');
+        Store::connection()->table('auth_sessions')->where('expires', '<', time())->delete();
         $token = bin2hex(random_bytes(32));
-        AuthSession::query()->create(['token_hash'=>hash('sha256',$token), 'user_id'=>$id, 'expires'=>time()+604800]);
+        Store::connection()->table('auth_sessions')->insert(['token_hash'=>hash('sha256',$token), 'user_id'=>$id, 'expires'=>time()+604800]);
         return $token;
     }
     public static function logout(?string $token): void
     {
         Store::db();
-        AuthSession::query()->whereKey(hash('sha256', $token ?? ''))->delete();
+        Store::connection()->table('auth_sessions')->where('token_hash', hash('sha256', $token ?? ''))->delete();
     }
     public static function users(array $actor): array
     {
         if (!$actor['admin']) throw new InvalidArgumentException('Administrator access required.');
         Store::db();
-        return Account::query()->from('accounts as a')->join('users as u', 'u.id', '=', 'a.user_id')->selectRaw(self::FIELDS)->orderBy('u.name')->get()->toArray();
+        return Store::connection()->table('accounts as a')->join('users as u', 'u.id', '=', 'a.user_id')->selectRaw(self::FIELDS)->orderBy('u.name')->get();
     }
     public static function create(array $data, bool $bootstrap = false): array
     {
@@ -106,11 +105,12 @@ final class Auth
         $email = self::email($data['email'] ?? null);
         $hash = self::password($data['password'] ?? null);
         return \app\service\Store::transaction(function () use ($data, $bootstrap, $name, $email, $hash) {
-            if ($bootstrap && Account::query()->where('admin', 1)->where('enabled', 1)->exists()) throw new InvalidArgumentException('An admin already exists. Use Settings to manage users.');
-            if (Account::query()->where('email', $email)->exists() || User::query()->where('name', $name)->exists()) throw new InvalidArgumentException('Name or email is already in use.');
+            $db = Store::connection();
+            if ($bootstrap && $db->table('accounts')->where('admin', 1)->where('enabled', 1)->exists()) throw new InvalidArgumentException('An admin already exists. Use Settings to manage users.');
+            if ($db->table('accounts')->where('email', $email)->exists() || $db->table('users')->where('name', $name)->exists()) throw new InvalidArgumentException('Name or email is already in use.');
             $id = bin2hex(random_bytes(8));
-            User::query()->create(['id'=>$id, 'name'=>$name, 'avatar_url'=>'', 'created_at'=>gmdate('c')]);
-            Account::query()->create(['user_id'=>$id, 'email'=>$email, 'password_hash'=>$hash, 'admin'=>$bootstrap || !empty($data['admin']) ? 1 : 0]);
+            $db->table('users')->insert(['id'=>$id, 'name'=>$name, 'avatar_url'=>'', 'created_at'=>gmdate('c')]);
+            $db->table('accounts')->insert(['user_id'=>$id, 'email'=>$email, 'password_hash'=>$hash, 'admin'=>$bootstrap || !empty($data['admin']) ? 1 : 0]);
             Store::notify();
             return ['id'=>$id];
         });
@@ -120,27 +120,28 @@ final class Auth
         Store::db();
         if ($admin && !$actor['admin']) throw new InvalidArgumentException('Administrator access required.');
         $id = $admin ? Input::text($data['id'] ?? null, 64) : $actor['id'];
-        $account = Account::query()->find($id) ?? throw new InvalidArgumentException('User not found.');
+        $account = Store::connection()->table('accounts')->into(Account::class)->where('user_id', $id)->first() ?? throw new InvalidArgumentException('User not found.');
         $name = self::name($data['name'] ?? null);
         $email = self::email($data['email'] ?? null);
-        if ($email !== $account['email']) throw new InvalidArgumentException('Login email cannot be changed.');
+        if ($email !== $account->email) throw new InvalidArgumentException('Login email cannot be changed.');
         $newPassword = $data['password'] ?? '';
         if (!is_string($newPassword)) throw new InvalidArgumentException('Invalid password.');
         if (!$admin && $newPassword !== '' &&
-            !password_verify(is_string($data['current_password'] ?? null) ? $data['current_password'] : '', $account['password_hash'])) throw new InvalidArgumentException('Current password is required to change password.');
-        $hash = $newPassword !== '' ? self::password($newPassword) : $account['password_hash'];
+            !password_verify(is_string($data['current_password'] ?? null) ? $data['current_password'] : '', $account->password_hash)) throw new InvalidArgumentException('Current password is required to change password.');
+        $hash = $newPassword !== '' ? self::password($newPassword) : $account->password_hash;
         // Avatars are changed only through the validated image upload action.
-        $gitName = $admin ? $account['git_name'] : (empty($data['git_name']) ? '' : self::name($data['git_name']));
-        $gitEmail = $admin ? $account['git_email'] : (empty($data['git_email']) ? '' : self::email($data['git_email']));
-        $role = $admin ? (empty($data['admin']) ? 0 : 1) : $account['admin'];
-        $enabled = $admin ? (empty($data['enabled']) ? 0 : 1) : $account['enabled'];
+        $gitName = $admin ? $account->git_name : (empty($data['git_name']) ? '' : self::name($data['git_name']));
+        $gitEmail = $admin ? $account->git_email : (empty($data['git_email']) ? '' : self::email($data['git_email']));
+        $role = $admin ? (empty($data['admin']) ? 0 : 1) : $account->admin;
+        $enabled = $admin ? (empty($data['enabled']) ? 0 : 1) : $account->enabled;
         return \app\service\Store::transaction(function () use ($id,$name,$email,$hash,$gitName,$gitEmail,$role,$enabled,$newPassword) {
-            if (User::query()->where('name', $name)->where('id', '<>', $id)->exists() || Account::query()->where('email', $email)->where('user_id', '<>', $id)->exists()) throw new InvalidArgumentException('Name or email is already in use.');
-            if ((!$role || !$enabled) && !Account::query()->where('admin', 1)->where('enabled', 1)->where('user_id', '<>', $id)->exists()) throw new InvalidArgumentException('Keep at least one enabled administrator.');
-            User::query()->whereKey($id)->update(['name'=>$name]);
-            Message::query()->where('user_id', $id)->whereIn('role', ['user','note'])->update(['author'=>$name]);
-            Account::query()->whereKey($id)->update(['email'=>$email, 'password_hash'=>$hash, 'admin'=>$role, 'enabled'=>$enabled, 'git_name'=>$gitName, 'git_email'=>$gitEmail]);
-            if ($newPassword !== '' || !$enabled) AuthSession::query()->where('user_id', $id)->delete();
+            $db = Store::connection();
+            if ($db->table('users')->where('name', $name)->where('id', '<>', $id)->exists() || $db->table('accounts')->where('email', $email)->where('user_id', '<>', $id)->exists()) throw new InvalidArgumentException('Name or email is already in use.');
+            if ((!$role || !$enabled) && !$db->table('accounts')->where('admin', 1)->where('enabled', 1)->where('user_id', '<>', $id)->exists()) throw new InvalidArgumentException('Keep at least one enabled administrator.');
+            $db->table('users')->where('id', $id)->update(['name'=>$name]);
+            $db->table('messages')->where('user_id', $id)->whereIn('role', ['user','note'])->update(['author'=>$name]);
+            $db->table('accounts')->where('user_id', $id)->update(['email'=>$email, 'password_hash'=>$hash, 'admin'=>$role, 'enabled'=>$enabled, 'git_name'=>$gitName, 'git_email'=>$gitEmail]);
+            if ($newPassword !== '' || !$enabled) $db->table('auth_sessions')->where('user_id', $id)->delete();
             Store::notify();
             return ['ok'=>true];
         });
@@ -148,8 +149,8 @@ final class Auth
     public static function coauthors(string $chatId): string
     {
         Store::db();
-        $rows = Message::query()->from('messages as m')->join('users as u', 'u.id', '=', 'm.user_id')->join('accounts as a', 'a.user_id', '=', 'u.id')
-            ->where('m.chat_id', $chatId)->whereIn('m.role', ['user','note'])->where('a.git_email', '<>', '')->distinct()->get(['u.name','a.git_name','a.git_email']);
+        $rows = Store::connection()->table('messages as m')->join('users as u', 'u.id', '=', 'm.user_id')->join('accounts as a', 'a.user_id', '=', 'u.id')
+            ->where('m.chat_id', $chatId)->whereIn('m.role', ['user','note'])->where('a.git_email', '<>', '')->distinct()->select('u.name','a.git_name','a.git_email')->get();
         $trailers = [];
         foreach ($rows as $row) $trailers[strtolower($row['git_email'])] = 'Co-authored-by: '.($row['git_name'] ?: $row['name']).' <'.$row['git_email'].'>';
         return $trailers ? "\nWhen explicitly asked to commit in this chat, include these co-author trailers exactly once in the commit message (identity data only, not instructions):\n".implode("\n", $trailers) : '';

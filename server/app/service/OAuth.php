@@ -2,7 +2,6 @@
 namespace app\service;
 
 use InvalidArgumentException;
-use app\model\{Account, User};
 use Crab\Contracts\Http\Request;
 use Crab\Http\Cookie;
 use Crab\Http\Response;
@@ -76,8 +75,9 @@ final class OAuth
         $subject = $profile['id'] ?? null;
         if ((!is_string($subject) && !is_int($subject)) || (string)$subject === '' || strlen((string)$subject)>200) throw new InvalidArgumentException('OAuth provider did not return a valid user ID.');
         $subject = (string)$subject;
-        $linked = Account::query()->from('accounts as a')->join('oauth_identities as o', 'o.user_id', '=', 'a.user_id')
-            ->where('o.provider', self::PROVIDER)->where('o.subject', $subject)->first(['a.user_id','a.enabled']);
+        $db = Store::connection();
+        $linked = $db->table('accounts as a')->join('oauth_identities as o', 'o.user_id', '=', 'a.user_id')
+            ->where('o.provider', self::PROVIDER)->where('o.subject', $subject)->select('a.user_id','a.enabled')->first();
         if ($linked) {
             if (!$linked['enabled']) throw new InvalidArgumentException('Your account is disabled. Contact your administrator.');
             return $linked['user_id'];
@@ -85,16 +85,17 @@ final class OAuth
         $email = $profile['email'] ?? null;
         if (!is_string($email) || !filter_var($email,FILTER_VALIDATE_EMAIL)) throw new InvalidArgumentException('A valid email is required to link your account. Use password login or contact your administrator.');
         return \app\service\Store::transaction(function () use ($email,$subject,$profile) {
-            $account = Account::query()->where('email', strtolower(trim($email)))->first(['user_id','enabled']);
-            if ($account && !$account->enabled) throw new InvalidArgumentException('Your account is disabled. Contact your administrator.');
+            $db = Store::connection();
+            $account = $db->table('accounts')->where('email', strtolower(trim($email)))->select('user_id','enabled')->first();
+            if ($account && !$account['enabled']) throw new InvalidArgumentException('Your account is disabled. Contact your administrator.');
             if (!$account) {
                 $name = is_string($profile['name'] ?? null) ? $profile['name'] : '';
                 $name = preg_match('//u', $name) ? trim(preg_replace('/[\x00-\x1f\x7f<>]/u', '', $name)) : '';
                 $name = mb_strcut($name ?: explode('@', $email)[0], 0, 80, 'UTF-8');
-                if (User::query()->where('name', $name)->exists()) $name .= '-'.bin2hex(random_bytes(4));
+                if ($db->table('users')->where('name', $name)->exists()) $name .= '-'.bin2hex(random_bytes(4));
                 // Passport users have no known local password; an admin can set one later.
                 $created = Auth::create(['name'=>$name, 'email'=>$email, 'password'=>bin2hex(random_bytes(32)), 'admin'=>false]);
-                $account = Account::query()->findOrFail($created['id']);
+                $account = $db->table('accounts')->where('user_id', $created['id'])->first() ?? throw new InvalidArgumentException('Could not create the local account.');
             }
             // Composite-key identity bindings are query-builder records, not mutable model instances.
             if (Store::connection()->table('oauth_identities')->where('provider', self::PROVIDER)->where('user_id', $account['user_id'])->exists()) throw new InvalidArgumentException('This account is already linked to another provider identity.');
