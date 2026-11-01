@@ -215,7 +215,7 @@ final class Codex
                 $result = match ($m['action']) {
                     'profile' => ['user'=>$actor],
                     'projectSharing', 'projectSharingSave' => ProjectAccess::sharing($actor, $m['data'], $m['action'] === 'projectSharingSave'),
-                    'project', 'projectFolders', 'projectArchive', 'projectDelete', 'worktreeCreate' => $actor['admin']
+                    'project', 'projectFolders', 'projectFolderCreate', 'projectArchive', 'projectDelete', 'worktreeCreate' => $actor['admin']
                         ? \app\service\Actions::handle($m['action'], $m['data'])
                         : throw new \InvalidArgumentException('Administrator access required to manage projects.'),
                     'profileSave' => Auth::update($actor, $m['data'], false),

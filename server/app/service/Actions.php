@@ -44,6 +44,7 @@ final class Actions
         if (in_array($action, ['uploadStart', 'uploadChunk', 'uploadRemove'], true)) return Attachments::handle($action, $data);
         $result = match ($action) {
             'projectFolders' => WorkspaceFolders::listing($data),
+            'projectFolderCreate' => WorkspaceFolders::create($data),
             'projectContext' => self::projectContext($data),
             'avatarSave' => Attachments::saveAvatar($data),
             'projectWorkspace' => ProjectWorkspace::snapshot($data),
@@ -63,7 +64,7 @@ final class Actions
             'userAvatar' => self::updateUserAvatar($data),
             default => throw new InvalidArgumentException('Unknown action.'),
         };
-        if (!in_array($action, ['projectContext', 'projectFolders', 'projectWorkspace', 'projectFile', 'projectDiff'], true)) {
+        if (!in_array($action, ['projectContext', 'projectFolders', 'projectFolderCreate', 'projectWorkspace', 'projectFile', 'projectDiff'], true)) {
             Store::notify();
         }
         return $result;

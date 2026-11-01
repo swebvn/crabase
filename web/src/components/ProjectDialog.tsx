@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, ChevronRight, Folder } from "lucide-react";
+import { ArrowLeft, ChevronRight, Folder, Plus } from "lucide-react";
 import type { Request } from "../types";
 import { Dialog, ErrorNotice, IconButton, Input, Button } from "./ui";
 
@@ -20,9 +20,12 @@ export function ProjectDialog({
   close: () => void;
 }) {
   const [path, setPath] = useState<string>();
+  const [location, setLocation] = useState("");
   const [listing, setListing] = useState<FolderListing>();
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [folderName, setFolderName] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -32,11 +35,16 @@ export function ProjectDialog({
     setLoading(true);
     setListing(undefined);
     setSelected("");
+    setCreating(false);
+    setFolderName("");
     setQuery("");
     setError("");
     request<FolderListing>("projectFolders", path ? { path } : {})
       .then((result) => {
-        if (!stale) setListing(result);
+        if (!stale) {
+          setListing(result);
+          setLocation(result.path);
+        }
       })
       .catch((error) => {
         if (!stale) setError(error.message);
@@ -52,6 +60,36 @@ export function ProjectDialog({
     listing?.folders.filter((folder) =>
       folder.name.toLowerCase().includes(query.trim().toLowerCase()),
     ) || [];
+  function browse() {
+    const next = location.trim();
+    if (!next) {
+      setError("Enter a folder path.");
+      return;
+    }
+    setPath(next);
+  }
+  async function createFolder() {
+    if (busy || !listing || !folderName.trim()) return;
+    setBusy(true);
+    setError("");
+    try {
+      const result = await request<{ name: string; path: string }>("projectFolderCreate", {
+        path: listing.path,
+        name: folderName,
+      });
+      setListing((current) => current && {
+        ...current,
+        folders: [...current.folders, result].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" })),
+      });
+      setSelected(result.path);
+      setFolderName("");
+      setCreating(false);
+    } catch (error) {
+      setError((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
   async function openFolder() {
     if (busy || !selected) return;
     setBusy(true);
@@ -68,7 +106,7 @@ export function ProjectDialog({
     }
   }
   return (
-    <Dialog title="Open folder" close={close} dismissible={!busy}>
+    <Dialog title="Add project" close={close} dismissible={!busy}>
       <div className="folder-location">
         <IconButton
           label="Parent folder"
@@ -77,14 +115,38 @@ export function ProjectDialog({
         >
           <ArrowLeft size={16} />
         </IconButton>
-        <span className="truncate" title={listing?.path}>
-          {listing
-            ? listing.path === listing.root
-              ? listing.root
-              : listing.path.slice(listing.root.length + 1)
-            : "Workspace"}
-        </span>
+        <Input
+          className="folder-path"
+          aria-label="Folder path"
+          value={location}
+          disabled={busy || loading}
+          onChange={(event) => {
+            setLocation(event.target.value);
+            setSelected("");
+            setError("");
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+              event.preventDefault();
+              browse();
+            }
+          }}
+        />
+        <Button disabled={busy || loading || !location.trim()} onClick={browse}>Go</Button>
+        <Button disabled={busy || loading || !listing} onClick={() => { setCreating((value) => !value); setError(""); }}>
+          <Plus size={16} aria-hidden="true" />New folder
+        </Button>
       </div>
+      {creating && <form className="folder-create" onSubmit={(event) => { event.preventDefault(); void createFolder(); }}>
+        <label>
+          <span>New folder name</span>
+          <Input autoFocus value={folderName} maxLength={255} disabled={busy} onChange={(event) => setFolderName(event.target.value)} />
+        </label>
+        <div className="dialog-actions">
+          <Button disabled={busy} onClick={() => { setCreating(false); setFolderName(""); }}>Cancel</Button>
+          <Button type="submit" variant="primary" loading={busy} disabled={!folderName.trim()}>{busy ? "Creating…" : "Create folder"}</Button>
+        </div>
+      </form>}
       <label>
         <span className="sr-only">Search folders here</span>
         <Input

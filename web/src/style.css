@@ -2402,7 +2402,24 @@ legend {
 }
 .folder-location {
   margin-bottom: var(--space-3);
+  flex-wrap: wrap;
+}
+.folder-path {
+  flex: 1 1 220px;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--type-meta);
+}
+.folder-create {
+  display: grid;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.folder-create label {
+  display: grid;
+  gap: var(--space-1);
   font-size: var(--type-label);
+  font-weight: 500;
 }
 .folder-list {
   height: 260px;

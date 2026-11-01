@@ -14,16 +14,21 @@ final class WorkspaceFolders
 
     public static function resolve(mixed $value, bool $allowRoot = false): string
     {
-        $root = self::root();
         $value = Input::text($value, 4096);
-        if (str_contains($value, "\0")) throw new InvalidArgumentException('Invalid folder path.');
-        $path = realpath($value);
-        if (!$path || !is_dir($path) || !is_readable($path) || ($path !== $root && !str_starts_with($path, $root.'/'))) {
-            throw new InvalidArgumentException('Choose a readable folder inside the configured workspace.');
+        if (str_contains($value, "\0") || !str_starts_with($value, DIRECTORY_SEPARATOR)) {
+            throw new InvalidArgumentException('Enter an absolute folder path.');
         }
-        if ($path === $root && !$allowRoot) throw new InvalidArgumentException('Choose a folder inside the workspace.');
-        $relative = substr($path, strlen($root) + 1);
-        if (preg_match('~(^|/)\.~', $relative)) throw new InvalidArgumentException('Hidden folders cannot be projects.');
+        $path = realpath($value);
+        if (!$path || !is_dir($path) || !is_readable($path)) {
+            throw new InvalidArgumentException('Choose a readable folder.');
+        }
+        $defaultRoot = self::root();
+        if (self::hasSymlink($value) || ($path !== $defaultRoot && self::hasHiddenSegment($path))) {
+            throw new InvalidArgumentException('Hidden folders and symlink paths cannot be projects.');
+        }
+        if (!$allowRoot && ($path === DIRECTORY_SEPARATOR || $path === $defaultRoot)) {
+            throw new InvalidArgumentException('Choose a project folder, not a workspace root.');
+        }
         return $path;
     }
 
@@ -41,6 +46,38 @@ final class WorkspaceFolders
             $folders[] = ['name'=>$name, 'path'=>$child];
         }
         usort($folders, fn($a, $b) => strnatcasecmp($a['name'], $b['name']));
-        return ['root'=>$root, 'path'=>$path, 'parent'=>$path === $root ? null : dirname($path), 'folders'=>$folders];
+        return ['root'=>$root, 'path'=>$path, 'parent'=>$path === DIRECTORY_SEPARATOR ? null : dirname($path), 'folders'=>$folders];
+    }
+
+    public static function create(array $data): array
+    {
+        $parent = self::resolve($data['path'] ?? self::root(), true);
+        $name = Input::text($data['name'] ?? null, 255);
+        if (str_contains($name, "\0") || strpbrk($name, "/\\") !== false || preg_match('/[\x00-\x1F\x7F]/', $name) || str_starts_with($name, '.')) {
+            throw new InvalidArgumentException('Enter a visible folder name without path separators.');
+        }
+        $path = $parent.'/'.$name;
+        if (file_exists($path) || is_link($path)) throw new InvalidArgumentException('That folder already exists.');
+        if (!mkdir($path, 0700)) throw new InvalidArgumentException('Could not create the folder.');
+        return ['name'=>$name, 'path'=>self::resolve($path)];
+    }
+
+    private static function hasHiddenSegment(string $path): bool
+    {
+        foreach (explode('/', trim($path, '/')) as $segment) {
+            if ($segment !== '' && str_starts_with($segment, '.')) return true;
+        }
+        return false;
+    }
+
+    private static function hasSymlink(string $path): bool
+    {
+        $current = DIRECTORY_SEPARATOR;
+        foreach (explode('/', trim($path, '/')) as $segment) {
+            if ($segment === '') continue;
+            $current .= ($current === DIRECTORY_SEPARATOR ? '' : DIRECTORY_SEPARATOR).$segment;
+            if (is_link($current)) return true;
+        }
+        return false;
     }
 }
