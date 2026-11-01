@@ -214,7 +214,7 @@ if __name__=='__main__':
         first.call('sync',{'chat_id':owned},error=True)
     state=first.call('sync')['state']
     if not state['projects']:
-        subprocess.run(['php', 'vendor/bin/phinx', 'seed:run', '-c', 'phinx.php'], cwd=server, check=True)
+        subprocess.run(['php', 'bin/seed-workspace.php'], cwd=server, check=True)
         state=first.call('sync')['state']
     if not state['chats']:
         first.call('create', {'title': 'Smoke baseline'})
@@ -223,7 +223,8 @@ if __name__=='__main__':
     workspace=first.call('projectWorkspace', {'project_id':state['projects'][0]['id']})
     assert set(workspace)=={'paths','ignored','git','branch','changes'}
     folders=first.call('projectFolders')
-    assert folders['parent'] is None and all(not f['name'].startswith('.') for f in folders['folders'])
+    expected_parent = None if folders['path'] == '/' else str(Path(folders['path']).parent)
+    assert folders['parent'] == expected_parent and all(not f['name'].startswith('.') for f in folders['folders'])
     first.call('projectFolders', {'path':'/does-not-exist-crabase'}, error=True)
     first.call('unknown',error=True)
     first.call('create',{'project_id':'missing'},error=True)

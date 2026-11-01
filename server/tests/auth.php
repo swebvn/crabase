@@ -17,7 +17,7 @@ try {
         authCheck(!A::allowedHost($host) && !A::allowedOrigin('http://'.$host.':8787'));
     }
     foreach ([null, 'null', 'http://localhost:8787/path', 'http://localhost:9999', 'http://localhost.evil:8787', 'http://evil@localhost:8787'] as $origin) authCheck(!A::allowedOrigin($origin));
-    $process = proc_open([PHP_BINARY, dirname(__DIR__).'/vendor/bin/phinx','migrate','-c',dirname(__DIR__).'/phinx.php'], [0=>['file','/dev/null','r'],1=>['file','/dev/null','w'],2=>STDERR], $pipes);
+    $process = proc_open([PHP_BINARY, dirname(__DIR__).'/cua','migrate'], [0=>['file','/dev/null','r'],1=>['file','/dev/null','w'],2=>STDERR], $pipes);
     authCheck(proc_close($process) === 0);
     $id = A::create(['name'=>'Admin','email'=>'admin@example.com','password'=>'test-password'],true)['id'];
     denied(fn () => A::create(['name'=>'Other','email'=>'other@example.com','password'=>'test-password'],true));

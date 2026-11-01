@@ -7,7 +7,7 @@ function activityCheck(bool $ok): void { if (!$ok) throw new RuntimeException('A
 $path = tempnam(sys_get_temp_dir(), 'crabase-agents-');
 putenv('CRABASE_DB='.$path);
 try {
-    $process = proc_open([PHP_BINARY, dirname(__DIR__).'/vendor/bin/phinx', 'migrate', '-c', dirname(__DIR__).'/phinx.php'], [0=>['file','/dev/null','r'],1=>['file','/dev/null','w'],2=>STDERR], $pipes);
+    $process = proc_open([PHP_BINARY, dirname(__DIR__).'/cua', 'migrate'], [0=>['file','/dev/null','r'],1=>['file','/dev/null','w'],2=>STDERR], $pipes);
     activityCheck(is_resource($process) && proc_close($process) === 0);
     Store::db();
     $chat = app\service\Actions::handle('create', ['title'=>'Activity test'])['id'];

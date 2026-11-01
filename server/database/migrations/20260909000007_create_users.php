@@ -1,28 +1,32 @@
 <?php
-use Phinx\Migration\AbstractMigration;
 
-final class CreateUsers extends AbstractMigration
+declare(strict_types=1);
+
+use Crab\Contracts\Database\Migration;
+use Crab\Contracts\Database\Schema;
+
+return new class implements Migration
 {
-    public function up(): void
+    public function up(Schema $schema): void
     {
-        $this->execute("CREATE TABLE users (
+        $database = $schema->connection();
+        $database->execute("CREATE TABLE users (
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL UNIQUE,
             avatar_url TEXT NOT NULL DEFAULT '',
             created_at TEXT NOT NULL
         )");
-        // Preserve the two existing local profiles and historical human authors.
-        $statement = $this->getAdapter()->getConnection()->prepare('INSERT INTO users VALUES (?,?,?,?)');
-        foreach (['user1'=>'https://i.pravatar.cc/96?img=12', 'user2'=>'https://i.pravatar.cc/96?img=47'] as $name=>$avatar) {
-            $statement->execute([bin2hex(random_bytes(8)), $name, $avatar, gmdate('c')]);
-        }
-        $this->execute("INSERT INTO users (id,name,created_at)
+        $database->table('users')->insertMany([
+            ['id' => bin2hex(random_bytes(8)), 'name' => 'user1', 'avatar_url' => 'https://i.pravatar.cc/96?img=12', 'created_at' => gmdate('c')],
+            ['id' => bin2hex(random_bytes(8)), 'name' => 'user2', 'avatar_url' => 'https://i.pravatar.cc/96?img=47', 'created_at' => gmdate('c')],
+        ]);
+        $database->execute("INSERT INTO users (id,name,created_at)
             SELECT lower(hex(randomblob(8))), author, MIN(created_at) FROM messages
             WHERE role IN ('user','note') AND author NOT IN (SELECT name FROM users) GROUP BY author");
     }
 
-    public function down(): void
+    public function down(Schema $schema): void
     {
-        $this->execute('DROP TABLE users');
+        $schema->connection()->execute('DROP TABLE users');
     }
-}
+};

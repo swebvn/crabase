@@ -1,16 +1,19 @@
 <?php
 
-use Phinx\Migration\AbstractMigration;
+declare(strict_types=1);
 
-final class RemoveModelCache extends AbstractMigration
+use Crab\Contracts\Database\Migration;
+use Crab\Contracts\Database\Schema;
+
+return new class implements Migration
 {
-    public function up(): void
+    public function up(Schema $schema): void
     {
-        $this->execute("DELETE FROM settings WHERE key='models'");
+        $schema->connection()->table('settings')->where('key', 'models')->delete();
     }
 
-    public function down(): void
+    public function down(Schema $schema): void
     {
         // The model catalog is intentionally runtime-only and cannot be restored.
     }
-}
+};

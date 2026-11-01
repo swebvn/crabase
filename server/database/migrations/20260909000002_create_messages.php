@@ -1,11 +1,16 @@
 <?php
-use Phinx\Migration\AbstractMigration;
 
-final class CreateMessages extends AbstractMigration
+declare(strict_types=1);
+
+use Crab\Contracts\Database\Migration;
+use Crab\Contracts\Database\Schema;
+use app\service\MigrationSchema;
+
+return new class implements Migration
 {
-    public function up(): void
+    public function up(Schema $schema): void
     {
-        $sql = <<<'SQL'
+        MigrationSchema::createOrValidate($schema->connection(), 'messages', <<<'SQL'
 CREATE TABLE IF NOT EXISTS messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     chat_id TEXT NOT NULL REFERENCES chats(id),
@@ -14,19 +19,11 @@ CREATE TABLE IF NOT EXISTS messages (
     body TEXT NOT NULL,
     created_at TEXT NOT NULL
 );
-SQL;
-        // Validate pre-Phinx tables before recording their adoption.
-        $expected = new PDO('sqlite::memory:');
-        $expected->exec($sql);
-        $this->execute($sql);
-        $columns = $expected->query('PRAGMA table_info(messages)')->fetchAll(PDO::FETCH_ASSOC);
-        $actual = $this->getAdapter()->getConnection()->query('PRAGMA table_info(messages)')->fetchAll(PDO::FETCH_ASSOC);
-        if ($actual != $columns) throw new RuntimeException('Existing messages schema differs from the baseline.');
-        if ($this->fetchAll('PRAGMA foreign_key_check(messages)')) throw new RuntimeException('messages has invalid foreign keys.');
+SQL);
     }
 
-    public function down(): void
+    public function down(Schema $schema): void
     {
-        $this->execute('DROP TABLE messages');
+        $schema->connection()->execute('DROP TABLE messages');
     }
-}
+};

@@ -11,9 +11,9 @@ npm install
 composer install --working-dir=server
 npm run build
 cd server
-vendor/bin/phinx migrate
+php cua migrate
 php bin/create-admin.php  # First install only; prompts securely for credentials
-vendor/bin/phinx seed:run  # Optional: add this repository as a project
+php bin/seed-workspace.php  # Optional: add this repository as a project
 php cua start
 ```
 
@@ -117,8 +117,8 @@ Authenticate Codex as the service user, then build and initialize the database:
 codex login
 npm run build
 cd server
-vendor/bin/phinx migrate
-# Optional: vendor/bin/phinx seed:run
+php cua migrate
+# Optional: php bin/seed-workspace.php
 php bin/create-admin.php  # First installation only
 php cua start
 ```
@@ -226,7 +226,7 @@ git pull --ff-only
 npm ci
 composer install --working-dir=server --no-dev --optimize-autoloader
 npm run build
-php server/vendor/bin/phinx migrate -c server/phinx.php
+php server/cua migrate
 exit
 sudo systemctl start crabase
 sudo systemctl status crabase
@@ -251,11 +251,11 @@ Start with this in-place deployment checkout to keep operations simple. If we la
 
 ### 8. Restore or roll back
 
-Stop Crabase first. For a code-only failure with a compatible database schema, redeploy the previous tested SHA, its dependency versions and frontend artifact. Do not automatically run `phinx rollback` on production.
+Stop Crabase first. For a code-only failure with a compatible database schema, redeploy the previous tested SHA, its dependency versions and frontend artifact. Do not automatically run `php server/cua migrate:rollback` on production.
 
 If a migration or data change requires restoring a backup, preserve the failed state first and restore the database and matching runtime/workspace/Codex data to their original paths and ownership. Use SQLite's restore operation while the app is stopped rather than replacing a database underneath live WAL connections. Restore `.env` only if needed. A data restore loses changes made after the backup; coordinate it with the team before restarting. Never run migration rollback commands against the only copy of workspace data.
 
-For failures, check `journalctl -u crabase`, confirm the service user's `CODEX_BIN`, run `codex login` as that user, verify directory ownership, and run `vendor/bin/phinx status` from `server/`.
+For failures, check `journalctl -u crabase`, confirm the service user's `CODEX_BIN`, run `codex login` as that user, verify directory ownership, and run `php cua migrate:status` from `server/`.
 
 ## Included
 
@@ -336,29 +336,29 @@ Restart the running backend after configuration changes. This names the agent in
 
 Deliverables are stored persistently under the configured `CRABASE_WORKSPACE_ROOT` in `.artifacts/<chat-id>/`. The agent generates them there and runs a publish command that registers the file and returns its browser URL; files created elsewhere are copied in. Images can preview in chat; all file types can download through the local PHP server. Existing raw filesystem links must be republished. Back up `.artifacts` alongside the database; do not treat it as a temporary directory.
 
-### Database migrations (Phinx)
+### Database migrations (CrabPHP)
 
-Run from `server/`. Phinx and the application use the same `CRABASE_DB` path (default `server/runtime/crabase.sqlite`), including `.env`. Configuration is in `server/phinx.php`; versioned PHP migrations live in `server/database/migrations/`.
+Run from `server/`. CrabPHP and the application use the same `CRABASE_DB` path (default `server/runtime/crabase.sqlite`), including `.env`. Configuration is in `config/database.php`; versioned PHP migrations live in `database/migrations/`.
 
 ```bash
-vendor/bin/phinx status
-vendor/bin/phinx create AddChatDescription
-vendor/bin/phinx migrate
-vendor/bin/phinx rollback  # Latest migration; development database only
-vendor/bin/phinx migrate   # Reapply after editing an unshipped migration
+php cua migrate:status
+php cua make:migration add_chat_description
+php cua migrate
+php cua migrate:rollback  # Latest batch; development database only
+php cua migrate           # Reapply after editing an unshipped migration
 ```
 
-Use explicit `up()` and `down()` methods for changes that cannot be automatically reversed by `change()`. Once deployed, leave migration files unchanged and add another migration. Phinx records applied versions in `phinxlog`. SQLite migrations run transactionally; irreversible data loss requires a backup, even when schema rollback is possible.
+Each migration returns a CrabPHP `Migration` object with explicit `up()` and `down()` methods. Once deployed, leave migration files unchanged and add another migration. CrabPHP records applied names and batches in `migrations`. SQLite migrations run transactionally; irreversible data loss requires a backup, even when schema rollback is possible.
 
-For isolated development, prefix **every command** with `CRABASE_DB=/absolute/path/dev.sqlite`. Each initial table has its own migration. Rolling back drops the latest table/change; `rollback -t 0` drops all application tables and their data. Do not run it against the workspace database you want to keep. Artifact files are outside migration scope.
+For isolated development, prefix **every command** with `CRABASE_DB=/absolute/path/dev.sqlite`. Each initial table has its own migration. `migrate:rollback` takes back the latest batch; `migrate:fresh` drops every table and reruns all migrations, destroying data. Do not run it against the workspace database you want to keep. Artifact files are outside migration scope.
 
-Deployment: stop the server, create a consistent SQLite backup using SQLite's backup API (including WAL contents), run `vendor/bin/phinx migrate`, and start the server only after success. Workers no longer create, upgrade, or seed tables on connection. `vendor/bin/phinx seed:run` optionally registers the Crabase project; it does not insert dummy conversations.
+Deployment: stop the server, create a consistent SQLite backup using SQLite's backup API (including WAL contents), run `php cua migrate`, and start the server only after success. Workers no longer create, upgrade, or seed tables on connection. `php bin/seed-workspace.php` optionally registers the Crabase project; it does not insert dummy conversations.
 
-The initial table migrations can adopt the current pre-Phinx schema without rewriting application rows. It rejects older/incompatible columns; upgrade those databases using the previous application release first. Always back up before adoption.
+The first Crab migration adopts an existing Phinx ledger when present, preserving application rows and removing the old `phinxlog` table. The initial table migrations can also adopt the current pre-migration schema without rewriting application rows. They reject older/incompatible columns; upgrade those databases using the previous application release first. Always back up before adoption.
 
 ### Models and users
 
-`server/app/model/` contains application-owned records backed by CrabPHP's query builder for users, accounts, sessions, projects, chats, messages, jobs, approvals, events, settings and pending uploads. Relations are explicit query methods, and JSON/boolean casts plus hidden credential fields are mapped by the record wrapper. `Actions` validates input and coordinates model operations; Phinx owns migrations. `config/database.php` uses SQLite with foreign keys and one Crab connection pool. The Codex worker uses models, with per-chat FIFO selection owned by `Job::nextQueued` and atomic streaming owned by `Message::appendBody`. Visible writes explicitly bump the revision through `Store::notify`; bulk model updates do not emit model events. Revisions and writes share the same transaction. Authentication/session/upload bookkeeping stays silent. Bound SQL remains for atomic message appends, revision/throttle increments and one-use OAuth state consumption; short-lived/composite-key OAuth bookkeeping uses the query builder. `Store::all/run` remain for existing test/operator scripts, not application CRUD.
+`server/app/model/` contains application-owned records backed by CrabPHP's query builder for users, accounts, sessions, projects, chats, messages, jobs, approvals, events, settings and pending uploads. Relations are explicit query methods, and JSON/boolean casts plus hidden credential fields are mapped by the record wrapper. `Actions` validates input and coordinates model operations; CrabPHP owns migrations. `config/database.php` uses SQLite with foreign keys and one Crab connection pool. The Codex worker uses models, with per-chat FIFO selection owned by `Job::nextQueued` and atomic streaming owned by `Message::appendBody`. Visible writes explicitly bump the revision through `Store::notify`; bulk model updates do not emit model events. Revisions and writes share the same transaction. Authentication/session/upload bookkeeping stays silent. Bound SQL remains for atomic message appends, revision/throttle increments and one-use OAuth state consumption; short-lived/composite-key OAuth bookkeeping uses the query builder. `Store::all/run` remain for existing test/operator scripts, not application CRUD.
 
 Users persist in SQLite with stable IDs, names, avatar URLs, and creation timestamps. Existing human message authors are backfilled into `messages.user_id`. The WebSocket boundary derives message identity from the authenticated session and ignores client `user_id`. Accounts contain private login and optional Git identity fields; workspace snapshots expose only public display identity. Optional TDA Passport OAuth2 links existing accounts or creates regular users on first login. Project visibility and membership are enforced through `ProjectAccess`; do not expose the service publicly without OS isolation.
 

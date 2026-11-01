@@ -8,7 +8,7 @@ $path = tempnam(sys_get_temp_dir(), 'crabase-models-');
 putenv('CRABASE_DB='.$path);
 function check(bool $ok): void { if (!$ok) throw new RuntimeException('Model selection check failed.'); }
 try {
-    $process = proc_open([PHP_BINARY, dirname(__DIR__).'/vendor/bin/phinx', 'migrate', '-c', dirname(__DIR__).'/phinx.php'], [0=>['file','/dev/null','r'],1=>['file','/dev/null','w'],2=>STDERR], $pipes);
+    $process = proc_open([PHP_BINARY, dirname(__DIR__).'/cua', 'migrate'], [0=>['file','/dev/null','r'],1=>['file','/dev/null','w'],2=>STDERR], $pipes);
     check(is_resource($process) && proc_close($process) === 0);
     S::db();
     S::run('INSERT INTO projects (id,name,path) VALUES (?,?,?)', ['test', 'Test', dirname(__DIR__, 2)]);

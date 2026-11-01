@@ -1,28 +1,25 @@
 <?php
-use Phinx\Migration\AbstractMigration;
 
-final class CreateSettings extends AbstractMigration
+declare(strict_types=1);
+
+use Crab\Contracts\Database\Migration;
+use Crab\Contracts\Database\Schema;
+use app\service\MigrationSchema;
+
+return new class implements Migration
 {
-    public function up(): void
+    public function up(Schema $schema): void
     {
-        $sql = <<<'SQL'
+        MigrationSchema::createOrValidate($schema->connection(), 'settings', <<<'SQL'
 CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
-SQL;
-        // Validate pre-Phinx tables before recording their adoption.
-        $expected = new PDO('sqlite::memory:');
-        $expected->exec($sql);
-        $this->execute($sql);
-        $columns = $expected->query('PRAGMA table_info(settings)')->fetchAll(PDO::FETCH_ASSOC);
-        $actual = $this->getAdapter()->getConnection()->query('PRAGMA table_info(settings)')->fetchAll(PDO::FETCH_ASSOC);
-        if ($actual != $columns) throw new RuntimeException('Existing settings schema differs from the baseline.');
-        if ($this->fetchAll('PRAGMA foreign_key_check(settings)')) throw new RuntimeException('settings has invalid foreign keys.');
+SQL);
     }
 
-    public function down(): void
+    public function down(Schema $schema): void
     {
-        $this->execute('DROP TABLE settings');
+        $schema->connection()->execute('DROP TABLE settings');
     }
-}
+};

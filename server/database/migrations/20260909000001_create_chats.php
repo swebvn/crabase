@@ -1,11 +1,16 @@
 <?php
-use Phinx\Migration\AbstractMigration;
 
-final class CreateChats extends AbstractMigration
+declare(strict_types=1);
+
+use Crab\Contracts\Database\Migration;
+use Crab\Contracts\Database\Schema;
+use app\service\MigrationSchema;
+
+return new class implements Migration
 {
-    public function up(): void
+    public function up(Schema $schema): void
     {
-        $sql = <<<'SQL'
+        MigrationSchema::createOrValidate($schema->connection(), 'chats', <<<'SQL'
 CREATE TABLE IF NOT EXISTS chats (
     id TEXT PRIMARY KEY,
     project_id TEXT REFERENCES projects(id),
@@ -16,19 +21,11 @@ CREATE TABLE IF NOT EXISTS chats (
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
-SQL;
-        // Validate pre-Phinx tables before recording their adoption.
-        $expected = new PDO('sqlite::memory:');
-        $expected->exec($sql);
-        $this->execute($sql);
-        $columns = $expected->query('PRAGMA table_info(chats)')->fetchAll(PDO::FETCH_ASSOC);
-        $actual = $this->getAdapter()->getConnection()->query('PRAGMA table_info(chats)')->fetchAll(PDO::FETCH_ASSOC);
-        if ($actual != $columns) throw new RuntimeException('Existing chats schema differs from the baseline.');
-        if ($this->fetchAll('PRAGMA foreign_key_check(chats)')) throw new RuntimeException('chats has invalid foreign keys.');
+SQL);
     }
 
-    public function down(): void
+    public function down(Schema $schema): void
     {
-        $this->execute('DROP TABLE chats');
+        $schema->connection()->execute('DROP TABLE chats');
     }
-}
+};

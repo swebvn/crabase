@@ -31,7 +31,7 @@ function complete(int $id): void {
     $rpc->invoke($worker, 'test/complete', ['threadId'=>$thread,'turnId'=>$job['turn_id']], fn($result)=>null);
 }
 try {
-    $process = proc_open([PHP_BINARY, dirname(__DIR__).'/vendor/bin/phinx', 'migrate', '-c', dirname(__DIR__).'/phinx.php'], [0=>['file','/dev/null','r'],1=>['file','/dev/null','w'],2=>STDERR], $pipes);
+    $process = proc_open([PHP_BINARY, dirname(__DIR__).'/cua', 'migrate'], [0=>['file','/dev/null','r'],1=>['file','/dev/null','w'],2=>STDERR], $pipes);
     parallelCheck(is_resource($process) && proc_close($process) === 0);
     Store::db();
     $chatA = Actions::handle('create', ['title'=>'A'])['id'];

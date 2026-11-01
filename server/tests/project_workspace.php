@@ -12,7 +12,7 @@ function command(array $args, string $cwd): void {
     workspaceCheck(is_resource($process) && proc_close($process) === 0);
 }
 try {
-    command([PHP_BINARY, dirname(__DIR__).'/vendor/bin/phinx', 'migrate', '-c', dirname(__DIR__).'/phinx.php'], dirname(__DIR__));
+    command([PHP_BINARY, dirname(__DIR__).'/cua', 'migrate'], dirname(__DIR__));
     command(['git','init','--quiet'], $root.'/project');
     command(['git','config','user.email','test@example.com'], $root.'/project');
     command(['git','config','user.name','Test'], $root.'/project');

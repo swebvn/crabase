@@ -10,8 +10,7 @@
   "description": "CrabPHP backend for the Crabase shared coding workspace.",
   "require": {
     "php": ">=8.4",
-    "crabphp/framework": "^0.2",
-    "robmorgan/phinx": "^0.16"
+    "crabphp/framework": "^0.2"
   },
   "repositories": [
     {

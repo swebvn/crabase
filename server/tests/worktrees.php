@@ -12,7 +12,7 @@ function worktreeDenied(callable $action): void {
     throw new RuntimeException('Expected rejection.');
 }
 try {
-    $process = proc_open([PHP_BINARY, dirname(__DIR__).'/vendor/bin/phinx', 'migrate', '-c', dirname(__DIR__).'/phinx.php'], [0=>['file','/dev/null','r'],1=>['file','/dev/null','w'],2=>STDERR], $pipes);
+    $process = proc_open([PHP_BINARY, dirname(__DIR__).'/cua', 'migrate'], [0=>['file','/dev/null','r'],1=>['file','/dev/null','w'],2=>STDERR], $pipes);
     worktreeCheck(proc_close($process) === 0);
     foreach ([['init','--quiet'], ['config','user.name','Test'], ['config','user.email','test@example.com']] as $args) worktreeCheck(ProjectWorkspace::command($root.'/repo', $args)[0] === 0);
     file_put_contents($root.'/repo/readme.txt', "original\n");

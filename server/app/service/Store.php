@@ -28,8 +28,8 @@ final class Store
         if (self::$transaction !== null) return self::$transaction;
         $manager = self::$manager ??= self::manager();
         $db = $manager->connection();
-        if (!$db->table('sqlite_master')->where('type', 'table')->where('name', 'phinxlog')->exists()) {
-            throw new \RuntimeException('Database needs migrations. Run: cd server && vendor/bin/phinx migrate');
+        if (!$db->table('sqlite_master')->where('type', 'table')->where('name', 'migrations')->exists()) {
+            throw new \RuntimeException('Database needs migrations. Run: cd server && php cua migrate');
         }
         return $db;
     }
