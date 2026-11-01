@@ -64,17 +64,19 @@ The integration uses authorization code + S256 PKCE, browser-bound one-use state
 
 ## Deploy — internal team VPS
 
-Our deployment target is one VPS for a trusted team, reached over the team's private mesh network. Use the systemd setup below; Docker, Composer-global installation, and a public installer are not needed. The intended CI/CD flow is **push to `main` → test/build in GitHub Actions → deploy the tested commit over SSH**. This section documents the procedure; a deployment workflow and `crabase update` command are **not implemented yet**.
+Crabase runs as one dedicated Unix account with a persistent HTTP worker and Codex WebSocket worker. Keep both listeners on loopback and put a private SSH tunnel or a trusted reverse proxy in front of them. Do not expose ports 8787 or 8788 directly to an untrusted network. The deployment flow is **push to `main` → test/build → deploy that exact commit over SSH**; an automated workflow and `crabase update` command are not included.
 
-Crabase requires login through email/password or configured TDA Passport OAuth2. Projects default to private; admins use **Settings → Admin → Projects** to grant enabled users access or choose Public (all signed-in users). Admins always have access, worktrees inherit their parent’s sharing, and standalone chats remain shared. Existing projects become private on migration. Access checks cover workspace requests, live updates, terminals and artifact downloads. OS isolation is not implemented: shell commands and agents still share the server account and can reach other folders, so members must remain trusted collaborators. For deployment, keep both listeners on loopback and connect through an SSH tunnel. Direct mesh binding is an opt-in development setting; do not expose ports 8787 or 8788 to an untrusted network.
+Crabase requires login through email/password or configured TDA Passport OAuth2. Projects default to private; admins use **Settings → Admin → Projects** to grant enabled users access or choose Public (all signed-in users). OS isolation is not implemented: shell commands and agents share the service account, so members must remain trusted collaborators.
+
+The clean-server path below has been verified with the current `main` branch: clone, `npm ci`, Composer install, production build, fresh migrations, `php server/cua start -d`, and an unauthenticated HTTP `401` check.
 
 ### 1. Install prerequisites
 
-The VPS needs Git, Composer, PHP 8.4+ with PDO SQLite, `pcntl`, and `posix`, Node 22.12+, npm, and the Codex CLI. On Ubuntu/Debian, install the system packages first:
+The server needs Git, Composer, PHP 8.4+ with PDO SQLite, `pcntl`, and `posix`, Node 22.12+, npm, and the Codex CLI. On Ubuntu/Debian:
 
 ```sh
 sudo apt update
-sudo apt install -y git unzip sqlite3 php-cli php-sqlite3 php-mbstring composer
+sudo apt install -y git curl unzip php-cli php-sqlite3 php-mbstring composer
 php -m | grep -E 'pcntl|posix|pdo_sqlite'
 node --version
 npm --version
@@ -82,52 +84,65 @@ composer --version
 codex --version
 ```
 
-Install a current Node release and the Codex CLI using their official instructions if the distribution packages do not meet the versions above.
+Install current Node and Codex releases using their official instructions when the distribution packages are too old. `sqlite3` is useful for inspection but is not required for Crabase backups; PHP's SQLite extension provides the backup command below.
 
 ### 2. Create a dedicated user and install Crabase
 
-Run the application and Codex under the same unprivileged account so the persistent worker can read that account's Codex authentication and only the intended workspace folders.
+Run the application and Codex under the same unprivileged account so the persistent worker can read that account's Codex authentication and intended workspace folders.
 
 ```sh
-sudo adduser --disabled-password --gecos '' crabase
-sudo -iu crabase
-git clone https://github.com/bangnokia/crabase.git ~/crabase
+sudo adduser --disabled-password --gecos '' crab
+sudo -iu crab
+git clone https://github.com/swebvn/crabase.git ~/crabase
 cd ~/crabase
+mkdir -p server/runtime ~/workspace
+cp .env.example .env
 npm ci
 composer install --working-dir=server --no-dev --optimize-autoloader
-mkdir -p server/runtime ~/workspaces
-cp .env.example .env
 ```
 
-Edit `.env` for the VPS:
+Edit `.env` for the server. Use the public origin only when a reverse proxy is configured; keep the listeners bound to loopback:
 
 ```dotenv
-CRABASE_WORKSPACE_ROOT=/home/crabase/workspaces
+APP_URL=http://crabase.example
+CRABASE_BIND_HOST=127.0.0.1
+CRABASE_WORKSPACE_ROOT=/home/crab/workspace
 CRABASE_AGENT_NAME=Crab
 CRABASE_PARALLEL_CHATS=12
-CRABASE_DB=/home/crabase/crabase/server/runtime/crabase.sqlite
+CRABASE_DB=/home/crab/crabase/server/runtime/crabase.sqlite
 CODEX_BIN=/absolute/path/from-command-v-codex
+NODE_BIN=/absolute/path/from-command-v-node
 ```
 
-`CRABASE_WORKSPACE_ROOT` is the default directory shown when an administrator adds a project. The project picker accepts other absolute, readable directories too, and can create a new child folder in the current directory. Hidden folders and symlink paths are rejected. Keep the default narrow because it also stores scratch chats, artifacts, and managed worktrees. Set `CODEX_BIN` to the output of `command -v codex`; omit it only when `codex` is already on the service PATH.
+`CRABASE_WORKSPACE_ROOT` is the default directory shown when an administrator adds a project. The picker can browse other absolute, readable directories and create child folders; hidden folders and symlink paths are rejected. Keep this root narrow because it also stores scratch chats, artifacts, managed worktrees, and staged attachments. Set `CODEX_BIN` and `NODE_BIN` when those executables are not on the service user's `PATH`.
 
-Authenticate Codex as the service user, then build and initialize the database:
+Authenticate Codex and initialize the first database:
 
 ```sh
 codex login
 npm run build
-cd server
-php cua migrate
-# Optional: php bin/seed-workspace.php
-php bin/create-admin.php  # First installation only
-php cua start
+php server/cua migrate
+# Optional: php server/bin/seed-workspace.php
+php server/bin/create-admin.php  # First installation only
+php server/cua start -d
+php server/cua status
+curl --silent --show-error --include http://127.0.0.1:8787/auth/session
 ```
 
-Confirm that http://127.0.0.1:8787 responds on the VPS, then stop the foreground process with Ctrl+C.
+The unauthenticated session check must return HTTP `401` with `{"user":null}`. Stop the daemon with `php server/cua stop` if you are installing a supervisor next.
 
-### 3. Run with systemd
+### 3. Run and supervise the persistent server
 
-Create `/etc/systemd/system/crabase.service` as root. Adjust the PHP path if `command -v php` is not `/usr/bin/php`.
+For a simple trusted VPS, Cua's daemon mode is sufficient:
+
+```sh
+php server/cua start -d       # start in the background
+php server/cua status
+php server/cua restart        # graceful stop and start
+php server/cua stop
+```
+
+Do not run both daemon mode and systemd for the same checkout. If the host already uses systemd, create `/etc/systemd/system/crabase.service` as root. Use the foreground command under systemd (`start`, without `-d`); adjust the PHP path and checkout paths as needed:
 
 ```ini
 [Unit]
@@ -136,11 +151,11 @@ After=network.target
 
 [Service]
 Type=simple
-User=crabase
-Group=crabase
-WorkingDirectory=/home/crabase/crabase/server
-Environment=HOME=/home/crabase
-Environment=PATH=/home/crabase/.local/bin:/usr/local/bin:/usr/bin:/bin
+User=crab
+Group=crab
+WorkingDirectory=/home/crab/crabase/server
+Environment=HOME=/home/crab
+Environment=PATH=/home/crab/.local/bin:/usr/local/bin:/usr/bin:/bin
 ExecStart=/usr/bin/php cua start
 ExecStop=/usr/bin/php cua stop
 Restart=on-failure
@@ -151,7 +166,7 @@ KillMode=mixed
 WantedBy=multi-user.target
 ```
 
-Enable it and inspect its logs:
+Enable and inspect it:
 
 ```sh
 sudo systemctl daemon-reload
@@ -160,7 +175,18 @@ sudo systemctl status crabase
 sudo journalctl -u crabase -f
 ```
 
-### 4. Connect privately
+### 4. Reverse proxy and private access
+
+The browser uses `/` for HTTP and `/ws` for WebSocket. Caddy handles the upgrade automatically; a minimal site block is:
+
+```caddyfile
+http://crabase.example {
+    reverse_proxy /ws* 127.0.0.1:8788
+    reverse_proxy 127.0.0.1:8787
+}
+```
+
+Set `APP_URL` to that origin. For HTTPS, use the HTTPS origin and register the matching OAuth callback; review secure-cookie and origin settings before exposing the service publicly. For a private loopback deployment, tunnel both listeners instead:
 
 Join the same mesh network as the VPS, then use its mesh hostname or address for SSH. The default deployment keeps the application on loopback, so forward both listeners from your computer:
 
@@ -189,29 +215,29 @@ Keep this application checkout dedicated to deployment—do not use it as a team
 
 | Path | Contents |
 | --- | --- |
-| `/home/crabase/crabase/.env` | Server configuration and OAuth secret |
-| `/home/crabase/crabase/server/runtime/` | Default SQLite database, uploaded avatars, standalone-chat folders and runtime files |
-| `/home/crabase/workspaces/` | Original project repositories, `.worktrees`, `.chats`, `.artifacts` and staged attachments |
-| `/home/crabase/.codex/` | Codex configuration, authentication and thread history (or the configured Codex data directory) |
+| `/home/crab/crabase/.env` | Server configuration and OAuth secret |
+| `/home/crab/crabase/server/runtime/` | Default SQLite database, uploaded avatars, standalone-chat folders and runtime files |
+| `/home/crab/workspace/` | Original project repositories, `.worktrees`, `.chats`, `.artifacts` and staged attachments |
+| `/home/crab/.codex/` | Codex configuration, authentication and thread history (or the configured Codex data directory) |
 
 If `CRABASE_DB` is overridden, back up that database and its adjacent `avatars/` directory too. Worktrees depend on the original repositories' Git metadata: preserve both, including ignored project data such as `.env` and SQLite files. Never run `git clean -fdx` or deploy with a broad `rsync --delete` across these paths.
 
 Before stopping the service, ask the team to pause changes, let queued/running jobs finish or cancel them, and close terminals and preview processes. Stop Crabase so no new jobs arrive, then back up. The commands below assume the default database path from step 2:
 
 ```sh
-sudo systemctl stop crabase
-sudo -iu crabase
-cd ~/crabase
-mkdir -p /home/crabase/backups
-chmod 700 /home/crabase/backups
-deploy_backup=$(mktemp -d /home/crabase/backups/deploy-XXXXXXXX)
-sqlite3 server/runtime/crabase.sqlite \
-  ".backup '$deploy_backup/crabase.sqlite'"
+php server/cua stop
+mkdir -p /home/crab/backups
+chmod 700 /home/crab/backups
+deploy_backup=$(mktemp -d /home/crab/backups/deploy-XXXXXXXX)
+db_path=/home/crab/crabase/server/runtime/crabase.sqlite
+php -r '$db = new PDO("sqlite:".$argv[1]); $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION); $db->exec("VACUUM INTO " . $db->quote($argv[2]));' \
+  "$db_path" "$deploy_backup/crabase.sqlite"
 cp -a .env "$deploy_backup/env"
 cp -a server/runtime "$deploy_backup/runtime"
-cp -a /home/crabase/workspaces "$deploy_backup/workspaces"
-cp -a /home/crabase/.codex "$deploy_backup/codex"
+cp -a /home/crab/workspace "$deploy_backup/workspace"
+cp -a /home/crab/.codex "$deploy_backup/codex"
 git rev-parse HEAD > "$deploy_backup/commit"
+du -sh "$deploy_backup"
 ```
 
 These backups contain secrets; keep them private and copy them to protected off-host storage. Large workspaces can use filesystem snapshots instead of full copies. Do not let other processes write project databases during the backup.
@@ -227,9 +253,8 @@ npm ci
 composer install --working-dir=server --no-dev --optimize-autoloader
 npm run build
 php server/cua migrate
-exit
-sudo systemctl start crabase
-sudo systemctl status crabase
+php server/cua start -d
+php server/cua status
 curl --silent --show-error --include http://127.0.0.1:8787/auth/session
 ```
 
@@ -245,7 +270,7 @@ When we add the workflow, use this sequence:
 4. Use a GitHub deployment environment for the SSH key, mesh credentials and host settings. Pin the SSH host key using a fingerprint verified outside CI; do not disable host-key checking. Limit service-control privileges to the Crabase unit.
 5. Serialize deployments with a concurrency group; do not cancel a deployment halfway through migrations. Until we implement an active-job/terminal drain check, require operator approval after the team pauses work. Push-to-deploy must not silently interrupt active sessions.
 6. Record the previous deployed SHA, stop the service and make the backups above. Fetch and deploy the **exact tested SHA**, not whatever happens to be the latest `main`. Install PHP dependencies on the VPS and run `npm ci --omit=dev` there for the Node PTY runtime; do not upload a runner's platform-specific `node_modules`.
-7. Install that SHA's frontend artifact into `server/public/`, run migrations, start systemd and perform the checks from step 6. Record the deployed SHA and retain the previous artifact and backup. Deployment stops on failure and reports which step failed.
+7. Install that SHA's frontend artifact into `server/public/`, run migrations, start Cua (or systemd if that is the chosen supervisor) and perform the checks from step 6. Record the deployed SHA and retain the previous artifact and backup. Deployment stops on failure and reports which step failed.
 
 Start with this in-place deployment checkout to keep operations simple. If we later use versioned release folders, keep `.env`, the entire runtime directory, workspace data and Codex storage at stable shared paths; changing `CRABASE_DB` alone does not relocate standalone-chat folders.
 
@@ -255,7 +280,7 @@ Stop Crabase first. For a code-only failure with a compatible database schema, r
 
 If a migration or data change requires restoring a backup, preserve the failed state first and restore the database and matching runtime/workspace/Codex data to their original paths and ownership. Use SQLite's restore operation while the app is stopped rather than replacing a database underneath live WAL connections. Restore `.env` only if needed. A data restore loses changes made after the backup; coordinate it with the team before restarting. Never run migration rollback commands against the only copy of workspace data.
 
-For failures, check `journalctl -u crabase`, confirm the service user's `CODEX_BIN`, run `codex login` as that user, verify directory ownership, and run `php cua migrate:status` from `server/`.
+For failures, check `server/storage/logs/server.log` (or `journalctl -u crabase` when using systemd), confirm the service user's `CODEX_BIN` and `NODE_BIN`, run `codex login` as that user, verify directory ownership, and run `php server/cua migrate:status` from the checkout root.
 
 ## Included
 
