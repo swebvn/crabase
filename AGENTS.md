@@ -6,8 +6,9 @@ Crabase is a local shared workspace: React/Vite frontend, PHP CrabPHP backend, S
 
 - `pnpm run build` — typecheck and production frontend build.
 - `npm test` — model/effort and WebSocket integration tests.
-- `php server/start.php start` — run HTTP on `127.0.0.1:8787` and WebSocket on `127.0.0.1:8788`.
-- `php server/start.php stop` — stop the server.
+- `php server/cua start` — run HTTP on `127.0.0.1:8787` and the Codex WebSocket on `127.0.0.1:8788`.
+- `php server/cua stop` — stop a background server.
+- `--single` serves HTTP only; use normal `start` when the UI needs chat and Codex.
 
 ## Rules
 

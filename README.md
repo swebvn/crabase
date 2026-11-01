@@ -14,10 +14,12 @@ cd server
 vendor/bin/phinx migrate
 php bin/create-admin.php  # First install only; prompts securely for credentials
 vendor/bin/phinx seed:run  # Optional: add this repository as a project
-php start.php start
+php cua start
 ```
 
-Open **http://127.0.0.1:8787**. Stop the server with Ctrl+C, or `php start.php stop` from `server/`. For background operation: `php start.php start -d`.
+Open **http://127.0.0.1:8787**. Stop the server with Ctrl+C, or `php cua stop` from `server/`. For background operation: `php cua start -d`.
+
+Run the normal `start` command for the full workspace: it starts the HTTP server and the persistent Codex WebSocket on port `8788`. The framework's `--single` mode intentionally serves HTTP only, so it is not suitable for chat or Codex sessions.
 
 For frontend development, keep PHP running and run `npm run dev` in another terminal. Open http://127.0.0.1:5173. Vite proxies the WebSocket to PHP; production serves compiled static files directly from CrabPHP.
 
@@ -26,7 +28,7 @@ For temporary development from a trusted LAN or NetBird mesh, bind both listener
 ```sh
 CRABASE_BIND_HOST=0.0.0.0 \
 CRABASE_ALLOWED_HOSTS=100.99.0.0/16 \
-php server/start.php start
+php server/cua start
 pnpm exec vite --host 0.0.0.0
 ```
 
@@ -118,7 +120,7 @@ cd server
 vendor/bin/phinx migrate
 # Optional: vendor/bin/phinx seed:run
 php bin/create-admin.php  # First installation only
-php start.php start
+php cua start
 ```
 
 Confirm that http://127.0.0.1:8787 responds on the VPS, then stop the foreground process with Ctrl+C.
@@ -139,8 +141,8 @@ Group=crabase
 WorkingDirectory=/home/crabase/crabase/server
 Environment=HOME=/home/crabase
 Environment=PATH=/home/crabase/.local/bin:/usr/local/bin:/usr/bin:/bin
-ExecStart=/usr/bin/php start.php start
-ExecStop=/usr/bin/php start.php stop
+ExecStart=/usr/bin/php cua start
+ExecStop=/usr/bin/php cua stop
 Restart=on-failure
 RestartSec=3
 KillMode=mixed
@@ -325,7 +327,7 @@ The UI uses locally bundled Inter, with 14px chat text and a 16px composer. Font
 The agent is called **Crab** by default. Edit `server/config/crabase.php` or start the backend with an environment override:
 
 ```sh
-CRABASE_AGENT_NAME="Your agent name" php server/start.php start
+CRABASE_AGENT_NAME="Your agent name" php server/cua start
 ```
 
 Restart the running backend after configuration changes. This names the agent in the UI, including historical assistant-message headers, composer, approval prompts, and new activity. Codex remains the underlying runtime; model names and message content are not renamed.
