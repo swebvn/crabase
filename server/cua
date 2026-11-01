@@ -4,5 +4,5 @@
 declare(strict_types=1);
 
 require __DIR__.'/vendor/autoload.php';
-$app = require __DIR__.'/app.php';
-exit($app->console->run(array_slice($argv, 1)));
+
+exit(Crab\Cua::run(__DIR__.'/app.php', array_slice($argv, 1)));

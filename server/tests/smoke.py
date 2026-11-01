@@ -13,7 +13,7 @@ def ensure_server(server):
             return
     except OSError:
         pass
-    server_process = subprocess.Popen(['php', 'start.php', 'start', '--workers=1'], cwd=server)
+    server_process = subprocess.Popen(['php', 'cua', 'start', '--workers=1'], cwd=server)
     deadline = __import__('time').time() + 10
     while __import__('time').time() < deadline:
         try:
