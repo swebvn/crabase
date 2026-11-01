@@ -14,7 +14,7 @@ export default defineConfig({
     proxy: {
       "/auth": { target: "http://127.0.0.1:8787" },
       "/files": { target: "http://127.0.0.1:8787" },
-      "/live": { target: "ws://127.0.0.1:8788", ws: true },
+      "/ws": { target: "ws://127.0.0.1:8788", ws: true },
     },
   },
 });

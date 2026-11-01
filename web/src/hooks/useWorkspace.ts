@@ -88,13 +88,9 @@ export function useWorkspace(selected: string) {
       pending.current.clear();
     };
     function connect() {
-      const endpoint =
-        location.port === "5173"
-          ? `${location.host}/live`
-          : `${location.hostname}:8788`;
-      const socket = new WebSocket(
-        `${location.protocol === "https:" ? "wss" : "ws"}://${endpoint}`,
-      );
+      const endpoint = new URL("/ws", window.location.href);
+      endpoint.protocol = endpoint.protocol === "https:" ? "wss:" : "ws:";
+      const socket = new WebSocket(endpoint);
       socketRef.current = socket;
       socket.onopen = () => {
         if (!disposed) setLive(true);
