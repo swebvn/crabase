@@ -82,9 +82,8 @@ sudo apt install -y php8.4-cli php8.4-sqlite3 php8.4-mbstring
 curl -fsSL https://deb.nodesource.com/setup_22.x | sudo bash -
 sudo apt install -y nodejs
 curl -fsSL https://getcomposer.org/installer | sudo php -- --install-dir=/usr/local/bin --filename=composer
-sudo npm install -g @openai/codex
 php -m | grep -E 'pcntl|posix|pdo_sqlite|mbstring|fileinfo'   # all five must be listed
-php --version && node --version && composer --version && codex --version
+php --version && node --version && composer --version
 ```
 
 On Debian 13, skip the `add-apt-repository` line and install `php-cli php-sqlite3 php-mbstring` (already PHP 8.4). Do not install Composer from apt on Ubuntu 24.04; that package pulls in PHP 8.3.
@@ -102,19 +101,57 @@ cat > .env <<'EOF'
 APP_URL=https://crabase.example.com
 CRABASE_WORKSPACE_ROOT=/home/crab/workspace
 CRABASE_AGENT_NAME=Crab
+CODEX_BIN=/home/crab/.local/bin/codex
 EOF
 npm ci
 composer install --working-dir=server --no-dev --optimize-autoloader
 npm run build
 php server/cua migrate
 php server/bin/create-admin.php     # prompts for the first admin's name, email and password
-codex login --device-auth           # sign Codex in for the crab user; follow the printed link
 exit
 ```
 
-Replace `crabase.example.com` with your domain. `APP_URL` must be the exact browser origin: Crabase accepts that host and origin, and makes session cookies `Secure` when it is `https://`. `CRABASE_WORKSPACE_ROOT` is where projects, scratch chats, artifacts and worktrees live; keep it narrow. Optional settings: `CRABASE_PARALLEL_CHATS` (default 12), and `CODEX_BIN` / `NODE_BIN` (absolute paths) only if those programs are not in `/usr/bin` or `/usr/local/bin`. Stay on a release tag rather than `main`; the in-app updater only upgrades release checkouts.
+Replace `crabase.example.com` with your domain. `APP_URL` must be the exact browser origin: Crabase accepts that host and origin, and makes session cookies `Secure` when it is `https://`. `CRABASE_WORKSPACE_ROOT` is where projects, scratch chats, artifacts and worktrees live; keep it narrow. `CODEX_BIN` points at the Codex install from step 3. Optional settings: `CRABASE_PARALLEL_CHATS` (default 12), and `NODE_BIN` (absolute path) if Node is not in `/usr/bin` or `/usr/local/bin`, for example when it comes from nvm. Stay on a release tag rather than `main`; the in-app updater only upgrades release checkouts.
 
-### 3. Start Crabase and keep it running after reboots
+### 3. Set up Codex
+
+Crabase runs one persistent `codex app-server` as the `crab` user. Install the official standalone Codex CLI for that user (no root and no Node needed; it lands in `~/.codex/packages/standalone/` with a `~/.local/bin/codex` link, which is what `CODEX_BIN` points at):
+
+```sh
+sudo -iu crab
+curl -fsSL https://chatgpt.com/codex/install.sh | sh
+~/.local/bin/codex --version
+```
+
+Then sign in with **one** of these, still as `crab`:
+
+```sh
+# a) ChatGPT account (Plus/Pro/Business): open the printed link on any device and enter the code
+~/.local/bin/codex login --device-auth
+
+# b) OpenAI API key, read without echoing it or saving it in shell history
+read -rsp 'API key: ' key && printf '%s' "$key" | ~/.local/bin/codex login --with-api-key; unset key
+
+~/.local/bin/codex login status     # must report that you are logged in / an API key is configured
+exit
+```
+
+c) **OpenAI-compatible proxy or other provider:** sign in with that provider's key as in (b), then point Codex at it in `/home/crab/.codex/config.toml`:
+
+```toml
+model_provider = "team"
+model = "your-default-model"          # optional; users pick a model per chat in Crabase
+
+[model_providers.team]
+name = "team"
+base_url = "https://llm-proxy.example.com/v1"
+wire_api = "responses"
+requires_openai_auth = true           # send the key saved by `codex login --with-api-key`
+```
+
+Crabase sets the working folder, `danger-full-access` sandbox and `never` approvals for every chat itself, and lists models from Codex's `model/list`, so nothing else is required in `config.toml`. After Crabase starts (step 4), **Settings → Admin → Health** should show *Codex app-server: ok* and a non-zero model count. To update Codex later, re-run the installer as `crab`, then `php server/cua restart` in `~/crabase`.
+
+### 4. Start Crabase and keep it running after reboots
 
 Cua's daemon mode supervises and restarts its own workers, so no service manager is needed. As the `crab` user:
 
@@ -129,7 +166,7 @@ exit
 
 The `@reboot` line (it replaces the `crab` user's crontab, so re-running is safe) starts Crabase when the VPS boots; its `PATH` must include `/usr/local/bin` so the in-app updater can find Composer. Day to day, as `crab` in `~/crabase`: `php server/cua restart`, `php server/cua stop`, `php server/cua status`.
 
-### 4. Serve the domain over HTTPS (Caddy)
+### 5. Serve the domain over HTTPS (Caddy)
 
 ```sh
 sudo tee /etc/caddy/Caddyfile >/dev/null <<'EOF'
@@ -149,7 +186,7 @@ For TDA Passport login, register `https://crabase.example.com/auth/oauth/callbac
 
 **Private access without a public domain:** put Caddy on loopback with `http://127.0.0.1:8080 { … }` (same two `reverse_proxy` lines), set `APP_URL=http://127.0.0.1:8787`, and have each member run `ssh -N -L 8787:127.0.0.1:8080 crab@VPS` and open `http://127.0.0.1:8787`.
 
-### 5. Updates
+### 6. Updates
 
 Open **Settings → Admin → Updates** as an administrator. Crabase checks the latest stable GitHub release; the update button is enabled only when the checkout is on an older release tag, has no tracked local changes, and no agent jobs or terminals are active. Updating restarts the service and briefly disconnects everyone. The updater:
 
@@ -176,7 +213,7 @@ php server/cua start -d
 exit
 ```
 
-### 6. Backups
+### 7. Backups
 
 Preserve these paths; they contain secrets, so keep copies private and off-host:
 
@@ -203,20 +240,20 @@ php server/cua start -d
 exit
 ```
 
-Never run `git clean -fdx`, `rsync --delete` or `php server/cua migrate:rollback` against these paths on production. To restore, stop Crabase, copy the database and the matching runtime/workspace/Codex data back to the same paths with `crab` ownership, check out the commit recorded in the backup, reinstall dependencies and build as in step 5, then run `php server/cua start -d`. A restore loses changes made after the backup.
+Never run `git clean -fdx`, `rsync --delete` or `php server/cua migrate:rollback` against these paths on production. To restore, stop Crabase, copy the database and the matching runtime/workspace/Codex data back to the same paths with `crab` ownership, check out the commit recorded in the backup, reinstall dependencies and build as in step 6, then run `php server/cua start -d`. A restore loses changes made after the backup.
 
-### 7. Troubleshooting
+### 8. Troubleshooting
 
 - `sudo -u crab php /home/crab/crabase/server/cua status` shows the workers; logs are in `server/storage/logs/server.log`, update output in `server/storage/update.log`.
 - **Settings → Admin → Health** shows the Codex app-server, database, agent queue and terminal host.
-- "Codex app-server not running": run `sudo -iu crab codex login status`; set `CODEX_BIN` in `.env` if `codex` is elsewhere.
+- "Codex app-server not running" or no models: run `sudo -iu crab ~/.local/bin/codex login status`, check `CODEX_BIN` in `.env` points at an executable, and check `server/storage/logs/server.log`; then `php server/cua restart`.
 - Sign-in or WebSocket rejected: `APP_URL` must match the address in the browser exactly, including `https://` and any port.
 - Update fails with "Could not run composer/npm": Crabase was started without `/usr/local/bin` on its `PATH` (the updater checks before stopping anything). Restart it from a `crab` login shell, and keep the `PATH=` part of the `@reboot` line.
 - Migration state: `sudo -iu crab php ~/crabase/server/cua migrate:status`.
 
 ### Push-to-deploy (planned)
 
-A CI workflow is not included. When one is added: test and build on an isolated runner (never on the production host, never with production `.env` or Codex credentials), deploy only successful pushes to protected `main`, reach the VPS over a pinned SSH host key from a protected deployment environment, serialize deployments, require operator approval until active work can be drained, and run the same stop → backup → install → build → migrate → start sequence as step 5 for the exact tested SHA.
+A CI workflow is not included. When one is added: test and build on an isolated runner (never on the production host, never with production `.env` or Codex credentials), deploy only successful pushes to protected `main`, reach the VPS over a pinned SSH host key from a protected deployment environment, serialize deployments, require operator approval until active work can be drained, and run the same stop → backup → install → build → migrate → start sequence as step 6 for the exact tested SHA.
 
 ## Included
 
