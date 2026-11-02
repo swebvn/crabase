@@ -14,9 +14,12 @@ $lock=fopen($lockPath,'c'); if (!$lock || !flock($lock,LOCK_EX)) exit("Another u
 $status=['state'=>'running','tag'=>$tag,'started_at'=>gmdate('c'),'updated_at'=>gmdate('c'),'message'=>'Preparing update.'];
 $write=static function(string $message,string $state='running',array $extra=[]) use (&$status): void { $status=array_merge($status,$extra,['state'=>$state,'message'=>$message,'updated_at'=>gmdate('c')]); Updater::writeStatus($status); };
 $run=static function(array $command,string $message) use($root,$write): string { $write($message); $pipes=[]; $process=proc_open($command,[1=>['pipe','w'],2=>['pipe','w']],$pipes,$root); if(!is_resource($process)) throw new RuntimeException('Could not run '.$command[0].'; install it or add it to the service PATH.'); $output=stream_get_contents($pipes[1]); $error=stream_get_contents($pipes[2]); fclose($pipes[1]); fclose($pipes[2]); $code=proc_close($process); if($code!==0) { $detail=trim($error?:$output); throw new RuntimeException($message.' failed.'.($detail!==''?' '.substr($detail,-1200):'')); } return trim($output); };
+$config = require $root . '/server/config/crabase.php';   // loads .env (NODE_BIN, CRABASE_DB) into the environment
 $node = getenv('NODE_BIN') ?: 'node';
 $npm = dirname($node) . '/npm';
 if (!is_file($npm) || !is_executable($npm)) $npm = 'npm';
+// npm and package scripts start with "#!/usr/bin/env node"; nvm-style installs need NODE_BIN's folder on PATH.
+if (is_file($node)) putenv('PATH=' . dirname($node) . ':' . (getenv('PATH') ?: '/usr/local/bin:/usr/bin:/bin'));
 $previous=$run(['git','rev-parse','HEAD'],'Reading the current commit.');
 $backupDirectory = null; $database = null; $started = false; $stopped = false; $checkedOut = false;
 try {
@@ -29,7 +32,7 @@ try {
     // Fail before stopping the service if a build tool is missing from the service PATH.
     $run(['composer','--version'],'Checking Composer.');
     $run([$npm,'--version'],'Checking npm.');
-    $config=require $root.'/server/config/crabase.php'; $database=(string)$config['database_path'];
+    $database=(string)$config['database_path'];
     $run([PHP_BINARY,'server/cua','stop','--timeout=30'],'Stopping Crabase before the update.');
     $stopped = true;
     $backupDirectory=$root.'/server/runtime/update-backups/'.gmdate('Ymd-His').'-'.bin2hex(random_bytes(3)); mkdir($backupDirectory,0700,true);
