@@ -9,4 +9,6 @@ use app\service\StoreProvider;
 return App::configure(__DIR__)
     ->withProviders([StoreProvider::class, CodexServer::class])
     ->withRouting(routes: 'routes.php')
+    // A reverse proxy on this host (Caddy) passes the browser address in X-Forwarded-For for login rate limits.
+    ->withMiddleware(prepend: [new Crab\Http\TrustedProxies(['127.0.0.1', '::1'])])
     ->create();

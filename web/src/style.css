@@ -64,6 +64,17 @@
 .settings-health th:last-child { width: 112px; }
 .settings-health-summary { display: flex; align-items: center; gap: var(--space-2); font-size: var(--type-label); }
 .settings-health-summary svg { flex-shrink: 0; color: var(--subtle); }
+.settings-update-card { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)) auto; align-items: center; gap: var(--space-3); padding: var(--space-3); border: 1px solid var(--line); border-radius: var(--radius-small); background: var(--surface); }
+.settings-update-card strong, .settings-update-card span { display: block; }
+.settings-update-card span { color: var(--subtle); font-size: var(--type-meta); }
+.settings-update-action { justify-self: end; }
+.settings-update-status { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-2); border-left: 3px solid var(--muted); background: var(--surface); }
+.settings-update-status span, .settings-update-status small { color: var(--subtle); font-size: var(--type-meta); overflow-wrap: anywhere; }
+.settings-status-succeeded { border-color: var(--focus); }
+.settings-status-failed { border-color: var(--danger); }
+.settings-update-release { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.settings-update-release small { display: block; color: var(--subtle); font-size: var(--type-meta); }
+.settings-release-notes { max-height: 260px; overflow: auto; padding: var(--space-2); white-space: pre-wrap; font: var(--type-meta) / 1.5 var(--font-mono); background: var(--surface); border: 1px solid var(--line); }
 .profile-avatar-upload { display: flex; flex-direction: column; gap: var(--space-2); padding-bottom: var(--space-3); border-bottom: 1px solid var(--line); }
 .profile-avatar-upload .attachment-list { margin: 0; }
 .profile-photo-row { display: flex; align-items: center; gap: var(--space-3); }
@@ -119,6 +130,8 @@
   .settings-form-grid { grid-template-columns: minmax(0, 1fr); }
   .settings-toolbar { flex-wrap: wrap; gap: var(--space-2); }
   .settings-search { max-width: none; flex-basis: 100%; }
+  .settings-update-card { grid-template-columns: minmax(0, 1fr); }
+  .settings-update-action { justify-self: start; }
   .settings-directory thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   .settings-directory, .settings-directory tbody { display: block; }
   .settings-directory tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: var(--space-2); padding: var(--space-2) 0; }

@@ -45,7 +45,7 @@ final class OAuth
             'code_challenge'=>rtrim(strtr(base64_encode(hash('sha256',$verifier,true)),'+/','-_'),'='),
             'code_challenge_method'=>'S256',
         ]);
-        return Response::redirect($url)->withHeader('Cache-Control', 'no-store')->withHeader('Referrer-Policy', 'no-referrer')->withCookie(new Cookie(self::COOKIE, $browser, 600, '/auth/oauth', '', false, true, 'Lax'));
+        return Response::redirect($url)->withHeader('Cache-Control', 'no-store')->withHeader('Referrer-Policy', 'no-referrer')->withCookie(new Cookie(self::COOKIE, $browser, 600, '/auth/oauth', '', Auth::secureCookies(), true, 'Lax'));
     }
     public static function consume(string $state, string $browser): string
     {
@@ -135,7 +135,7 @@ final class OAuth
             $stage = 'create_session';
             $session = Auth::session($id);
             Auth::logout($request->cookie(Auth::COOKIE));
-            return Response::redirect('/')->withHeader('Cache-Control', 'no-store')->withHeader('Referrer-Policy', 'no-referrer')->withHeader('X-Content-Type-Options', 'nosniff')->withCookie(Cookie::forget(self::COOKIE, '/auth/oauth'))->withCookie(new Cookie(Auth::COOKIE, $session, 604800, '/', '', false, true, 'Strict'));
+            return Response::redirect('/')->withHeader('Cache-Control', 'no-store')->withHeader('Referrer-Policy', 'no-referrer')->withHeader('X-Content-Type-Options', 'nosniff')->withCookie(Cookie::forget(self::COOKIE, '/auth/oauth'))->withCookie(new Cookie(Auth::COOKIE, $session, 604800, '/', '', Auth::secureCookies(), true, 'Strict'));
         } catch (InvalidArgumentException $error) {
             return Response::html(htmlspecialchars($error->getMessage(), ENT_QUOTES, 'UTF-8').' <a href="/">Return to sign in</a>', 400, $headers)->withCookie(Cookie::forget(self::COOKIE, '/auth/oauth'));
         } catch (\Throwable $error) {

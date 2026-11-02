@@ -24,14 +24,32 @@ final class Auth
     {
         return 'https://www.gravatar.com/avatar/'.hash('sha256', strtolower(trim($email))).'?s=96&d=mp';
     }
+    /** The public origin from APP_URL (scheme://host[:port]), or null when unset or invalid. */
+    public static function appOrigin(): ?string
+    {
+        $parts = parse_url((string) getenv('APP_URL'));
+        if (!is_array($parts) || !in_array($parts['scheme'] ?? '', ['http', 'https'], true) || !isset($parts['host'])) return null;
+        return strtolower($parts['scheme'].'://'.$parts['host']).(isset($parts['port']) ? ':'.$parts['port'] : '');
+    }
+    /** Session cookies are Secure whenever the public origin is HTTPS. */
+    public static function secureCookies(): bool
+    {
+        return str_starts_with((string) self::appOrigin(), 'https://');
+    }
     public static function allowedOrigin(?string $origin): bool
     {
         if (getenv('CRABASE_ALLOW_ALL_ORIGINS') === '1') return true;
+        if (is_string($origin) && ($app = self::appOrigin()) !== null && strtolower($origin) === $app) return true;
         if (!is_string($origin) || !preg_match('~^https?://([^/:]+)(?::(5173|8787))?$~D', $origin, $match)) return false;
-        if (in_array($match[1], ['cb.dev.tda', 'c.tdagroup.co'], true)) return true;
-        return self::allowedHost($match[1]);
+        return self::networkHost($match[1]);
     }
     public static function allowedHost(string $host): bool
+    {
+        if (($app = self::appOrigin()) !== null && strtolower($host) === parse_url($app, PHP_URL_HOST)) return true;
+        return self::networkHost($host);
+    }
+    /** Fixed team hosts, loopback and CRABASE_ALLOWED_HOSTS ranges; the APP_URL host only matches its exact origin. */
+    private static function networkHost(string $host): bool
     {
         if (in_array($host, ['cb.dev.tda', 'c.tdagroup.co'], true)) return true;
         if (in_array($host, ['localhost', '127.0.0.1'], true)) return true;

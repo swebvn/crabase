@@ -4,7 +4,7 @@ namespace app\process;
 
 use app\service\Store;
 use app\service\Auth;
-use app\service\{Input, ProjectAccess, ModelCatalog};
+use app\service\{Input, ProjectAccess, ModelCatalog, Updater};
 use Crab\Contracts\Log\Logger;
 use Crab\Engine\EventLoop;
 use Crab\Engine\Http\Request;
@@ -41,6 +41,7 @@ final class Codex
     private string $terminalOutput = '';
     private array $terminals = [];
     private int $terminalSequence = 0;
+    private ?array $updateStatus = null;
 
     public function __construct(?Logger $logger = null)
     {
@@ -86,6 +87,14 @@ final class Codex
             }
             unset($client);
             foreach (array_keys($expired) as $chatId) $this->presence((string)$chatId);
+            // The detached updater only writes update.json; push its progress to admins instead of client polling.
+            $status = Updater::status();
+            if ($this->updateStatus !== null && $status !== $this->updateStatus) {
+                foreach ($this->clients as $id => $client) {
+                    if (!empty(Auth::user($client['token'])['admin']) && isset($this->connections[$id])) $this->reply($this->connections[$id], ['type'=>'update', 'status'=>$status]);
+                }
+            }
+            $this->updateStatus = $status;
         });
     }
 
@@ -202,6 +211,10 @@ final class Codex
                 $this->clients[$connectionId]['typing'] = $m['data']['active'] ? microtime(true) + 6 : 0.0;
                 if ($was !== $m['data']['active']) $presence = [$chatId];
                 $result = ['ok' => true];
+            } elseif ($m['action'] === 'updateCheck') {
+                if (!$actor['admin']) throw new \InvalidArgumentException('Administrator access required.');
+                $this->updateCheck($connection, $id);
+                return;
             } elseif (str_starts_with($m['action'], 'terminal')) {
                 $result = $this->terminalAction($connection, $m['action'], $m['data']);
             } else {
@@ -221,6 +234,10 @@ final class Codex
                     'profileSave' => Auth::update($actor, $m['data'], false),
                     'usersList' => ['users'=>Auth::users($actor)],
                     'health' => $actor['admin'] ? $this->health() : throw new \InvalidArgumentException('Administrator access required.'),
+                    'updateStart' => $actor['admin'] ? Updater::start([
+                        'active_jobs' => Store::connection()->table('jobs')->whereIn('status', ['queued', 'running'])->count(),
+                        'active_terminals' => count(array_filter($this->terminals, static fn (array $terminal): bool => !empty($terminal['running']))),
+                    ]) : throw new \InvalidArgumentException('Administrator access required.'),
                     'userCreate' => $actor['admin'] ? Auth::create($m['data']) : throw new \InvalidArgumentException('Administrator access required.'),
                     'userUpdate' => Auth::update($actor, $m['data'], true),
                     default => \app\service\Actions::handle($m['action'], $m['data']),
@@ -304,6 +321,44 @@ final class Codex
         }
         unset($client);
         foreach (array_unique($revoked) as $chatId) $this->presence($chatId);
+    }
+
+    /** Fetches the release in a child process and replies when it exits, keeping the event loop free. */
+    private function updateCheck(WebSocketSession $connection, int $id): void
+    {
+        $pipes = [];
+        $process = @proc_open([PHP_BINARY, dirname(__DIR__, 2) . '/bin/release.php'], [0=>['file','/dev/null','r'], 1=>['pipe','w'], 2=>['file','/dev/null','w']], $pipes);
+        if (!is_resource($process)) throw new \InvalidArgumentException('Could not check for releases.');
+        $stdout = $pipes[1];
+        stream_set_blocking($stdout, false);
+        $output = '';
+        $timer = null;
+        $done = function (?string $failure = null) use (&$output, &$timer, $stdout, $process, $connection, $id): void {
+            if ($timer !== null) $this->loop->cancel($timer);
+            $this->unwatchReadable($stdout);
+            fclose($stdout);
+            if ($failure !== null) proc_terminate($process);
+            proc_close($process);
+            $value = json_decode($output, true);
+            try {
+                if ($failure !== null) throw new \InvalidArgumentException($failure);
+                if (!is_array($value) || !is_array($value['release'] ?? null)) throw new \InvalidArgumentException(is_string($value['error'] ?? null) ? $value['error'] : 'Could not check for releases.');
+                $packet = ['id'=>$id, 'result'=>Updater::check($value['release'])];
+            } catch (\InvalidArgumentException $e) {
+                $packet = ['id'=>$id, 'error'=>$e->getMessage()];
+            } catch (\Throwable $e) {
+                $this->logger->error('Update check failed.', ['exception' => $e]);
+                $packet = ['id'=>$id, 'error'=>'Could not check for releases.'];
+            }
+            if (in_array($connection, $this->connections, true)) $this->reply($connection, $packet);
+        };
+        $timer = $this->loop->delay(10, function () use (&$timer, $done): void { $timer = null; $done('GitHub did not respond in time. Try again later.'); });
+        $this->watchReadable($stdout, function () use (&$output, $stdout, $done): void {
+            $chunk = fread($stdout, 65536);
+            if ($chunk !== false) $output .= $chunk;
+            if (strlen($output) > 200000) $done('The release response was too large.');
+            elseif (feof($stdout)) $done();
+        });
     }
 
     private function health(): array

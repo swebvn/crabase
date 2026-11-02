@@ -52,235 +52,171 @@ Sign in, then use **Settings → Admin → Users** to list, create, edit, disabl
 
 **Settings → Profile** manages the display name, uploaded profile photo and optional Git author name/email. Login email is read-only, including for administrators. Changing a password requires the current password and signs the user out. After login, users without a working avatar or Gravatar must upload a photo in Profile before entering the workspace. Photos accept PNG, JPEG, GIF or WebP up to 5 MB and are stored in the `avatars` directory beside the configured SQLite database; include this directory in backups. Gravatar is a third-party service and receives the email hash and image request. Git emails can be GitHub-verified or `noreply` addresses; only configured participants receive agent-requested `Co-authored-by` trailers. These trailers are instructions to the agent, not a Git hook enforcing every manual commit.
 
-Sessions last seven days in HttpOnly, SameSite=Strict cookies. The HTTP shell/assets may load without login, but workspace data, WebSocket commands and artifact downloads require an enabled account. Login allows ten attempts per connection IP per fifteen minutes; loopback/SSH users share that limit. Cookies are intentionally non-Secure for this loopback HTTP setup; HTTPS deployment requires reviewed secure-cookie/origin configuration before exposure. Optional TDA Passport OAuth2 is described below.
+Sessions last seven days in HttpOnly, SameSite=Strict cookies. The HTTP shell/assets may load without login, but workspace data, WebSocket commands and artifact downloads require an enabled account. Login allows ten attempts per client IP per fifteen minutes. Behind the production Caddy proxy each browser address has its own limit; direct loopback/SSH users share one. Cookies are marked `Secure` automatically when `APP_URL` is an `https://` origin (see [Production deployment](#production-deployment)); local loopback HTTP keeps them non-Secure. Optional TDA Passport OAuth2 is described below.
 
 Existing historical identities remain for message attribution but cannot sign in until an operator explicitly migrates them to accounts. The initial admin command creates a new user rather than silently granting access to historical identities.
 
-### TDA Passport OAuth2 (local deployment)
+### TDA Passport OAuth2
 
-Register the exact redirect URL `http://127.0.0.1:8787/auth/oauth/callback` with TDA Passport. Put `TDA_PASSPORT_OAUTH_CLIENT_ID` and `TDA_PASSPORT_OAUTH_CLIENT_SECRET` in the ignored `.env` (never frontend code or Git), migrate, and restart PHP. The login screen then offers **Sign in with TDA**. CrabPHP's HTTP client handles the TLS requests. The authorization, token and user endpoints are fixed to `https://passport.tdagroup.online/oauth/authorize`, `/oauth/token`, and `/api/user` respectively.
+Register the exact redirect URL `APP_URL` + `/auth/oauth/callback` with TDA Passport (locally `http://127.0.0.1:8787/auth/oauth/callback`; in production your HTTPS domain). Put `TDA_PASSPORT_OAUTH_CLIENT_ID` and `TDA_PASSPORT_OAUTH_CLIENT_SECRET` in the ignored `.env` (never frontend code or Git), migrate, and restart PHP. The login screen then offers **Sign in with TDA**. CrabPHP's HTTP client handles the TLS requests. The authorization, token and user endpoints are fixed to `https://passport.tdagroup.online/oauth/authorize`, `/oauth/token`, and `/api/user` respectively.
 
-The integration uses authorization code + S256 PKCE, browser-bound one-use state (10-minute expiry), verified TLS, and server-side token exchange. Provider access tokens are used only to fetch the profile, then discarded. First login requires a top-level `id` and valid `email` from `/api/user`; email verification is not required. A matching enabled account is linked; otherwise a regular user account is created using the provider name and email. Disabled accounts remain blocked, and provider roles never grant administrator access. Later logins use the stored provider ID binding. Passport-created accounts have no known local password; an administrator can set one if needed. Existing password login remains available. Enabling Passport therefore grants Passport users access to this shared workspace. Login completes on `127.0.0.1:8787`, including when initiated from Vite. The OAuth flow cookie is HttpOnly/SameSite=Lax so the provider redirect can complete; normal session cookies remain Strict. This fixed loopback callback is not public-deployment configuration.
+The integration uses authorization code + S256 PKCE, browser-bound one-use state (10-minute expiry), verified TLS, and server-side token exchange. Provider access tokens are used only to fetch the profile, then discarded. First login requires a top-level `id` and valid `email` from `/api/user`; email verification is not required. A matching enabled account is linked; otherwise a regular user account is created using the provider name and email. Disabled accounts remain blocked, and provider roles never grant administrator access. Later logins use the stored provider ID binding. Passport-created accounts have no known local password; an administrator can set one if needed. Existing password login remains available. Enabling Passport therefore grants Passport users access to this shared workspace. Login completes on the `APP_URL` host, including when initiated from Vite. The OAuth flow cookie is HttpOnly/SameSite=Lax so the provider redirect can complete; normal session cookies remain Strict.
 
-## Deploy — internal team VPS
+## Production deployment
 
-Crabase runs as one dedicated Unix account with a persistent HTTP worker and Codex WebSocket worker. Keep both listeners on loopback and put a private SSH tunnel or a trusted reverse proxy in front of them. Do not expose ports 8787 or 8788 directly to an untrusted network. The deployment flow is **push to `main` → test/build → deploy that exact commit over SSH**; an automated workflow and `crabase update` command are not included.
+One VPS runs everything: a dedicated `crab` user owns the checkout, Crabase listens only on loopback (`8787` HTTP, `8788` WebSocket), Caddy serves your domain over HTTPS with automatic certificates, and Cua's daemon mode keeps it running (started at boot by a `crab` crontab line). Administrators install new releases from **Settings → Admin → Updates**.
 
-Crabase requires login through email/password or configured TDA Passport OAuth2. Projects default to private; admins use **Settings → Admin → Projects** to grant enabled users access or choose Public (all signed-in users). OS isolation is not implemented: shell commands and agents share the service account, so members must remain trusted collaborators.
+Tested on Ubuntu 24.04 LTS; Debian 13 works with the note in step 1. You need a domain (for example `crabase.example.com`) whose DNS `A`/`AAAA` record points to the VPS, and inbound ports 80 and 443 open.
 
-The clean-server path below has been verified with the current `main` branch: clone, `npm ci`, Composer install, production build, fresh migrations, `php server/cua start -d`, and an unauthenticated HTTP `401` check.
+OS isolation is not implemented: agents and terminals run as the `crab` user, so every signed-in member must be a trusted collaborator. Projects default to private; admins share them from **Settings → Admin → Projects**.
 
-### 1. Install prerequisites
+### 1. Install system packages
 
-The server needs Git, Composer, PHP 8.4+ with PDO SQLite, `pcntl`, and `posix`, Node 22.12+, npm, and the Codex CLI. On Ubuntu/Debian:
+Run as a sudo-capable user:
 
 ```sh
 sudo apt update
-sudo apt install -y git curl unzip php-cli php-sqlite3 php-mbstring composer
-php -m | grep -E 'pcntl|posix|pdo_sqlite'
-node --version
-npm --version
-composer --version
-codex --version
+sudo apt install -y software-properties-common git curl unzip caddy
+sudo add-apt-repository -y ppa:ondrej/php        # Ubuntu 24.04 ships PHP 8.3; Crabase needs 8.4+
+sudo apt install -y php8.4-cli php8.4-sqlite3 php8.4-mbstring
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo bash -
+sudo apt install -y nodejs
+curl -fsSL https://getcomposer.org/installer | sudo php -- --install-dir=/usr/local/bin --filename=composer
+sudo npm install -g @openai/codex
+php -m | grep -E 'pcntl|posix|pdo_sqlite|mbstring|fileinfo'   # all five must be listed
+php --version && node --version && composer --version && codex --version
 ```
 
-Install current Node and Codex releases using their official instructions when the distribution packages are too old. `sqlite3` is useful for inspection but is not required for Crabase backups; PHP's SQLite extension provides the backup command below.
+On Debian 13, skip the `add-apt-repository` line and install `php-cli php-sqlite3 php-mbstring` (already PHP 8.4). Do not install Composer from apt on Ubuntu 24.04; that package pulls in PHP 8.3.
 
-### 2. Create a dedicated user and install Crabase
-
-Run the application and Codex under the same unprivileged account so the persistent worker can read that account's Codex authentication and intended workspace folders.
+### 2. Create the service user and install Crabase
 
 ```sh
 sudo adduser --disabled-password --gecos '' crab
 sudo -iu crab
 git clone https://github.com/swebvn/crabase.git ~/crabase
 cd ~/crabase
+git checkout "$(git tag --list 'v*' --sort=-v:refname | awk '!/-/{print; exit}')"   # latest stable release
 mkdir -p server/runtime ~/workspace
-cp .env.example .env
-npm ci
-composer install --working-dir=server --no-dev --optimize-autoloader
-```
-
-Edit `.env` for the server. Use the public origin only when a reverse proxy is configured; keep the listeners bound to loopback:
-
-```dotenv
-APP_URL=http://crabase.example
-CRABASE_BIND_HOST=127.0.0.1
+cat > .env <<'EOF'
+APP_URL=https://crabase.example.com
 CRABASE_WORKSPACE_ROOT=/home/crab/workspace
 CRABASE_AGENT_NAME=Crab
-CRABASE_PARALLEL_CHATS=12
-CRABASE_DB=/home/crab/crabase/server/runtime/crabase.sqlite
-CODEX_BIN=/absolute/path/from-command-v-codex
-NODE_BIN=/absolute/path/from-command-v-node
-```
-
-`CRABASE_WORKSPACE_ROOT` is the default directory shown when an administrator adds a project. The picker can browse other absolute, readable directories and create child folders; hidden folders and symlink paths are rejected. Keep this root narrow because it also stores scratch chats, artifacts, managed worktrees, and staged attachments. Set `CODEX_BIN` and `NODE_BIN` when those executables are not on the service user's `PATH`.
-
-Authenticate Codex and initialize the first database:
-
-```sh
-codex login
+EOF
+npm ci
+composer install --working-dir=server --no-dev --optimize-autoloader
 npm run build
 php server/cua migrate
-# Optional: php server/bin/seed-workspace.php
-php server/bin/create-admin.php  # First installation only
+php server/bin/create-admin.php     # prompts for the first admin's name, email and password
+codex login --device-auth           # sign Codex in for the crab user; follow the printed link
+exit
+```
+
+Replace `crabase.example.com` with your domain. `APP_URL` must be the exact browser origin: Crabase accepts that host and origin, and makes session cookies `Secure` when it is `https://`. `CRABASE_WORKSPACE_ROOT` is where projects, scratch chats, artifacts and worktrees live; keep it narrow. Optional settings: `CRABASE_PARALLEL_CHATS` (default 12), and `CODEX_BIN` / `NODE_BIN` (absolute paths) only if those programs are not in `/usr/bin` or `/usr/local/bin`. Stay on a release tag rather than `main`; the in-app updater only upgrades release checkouts.
+
+### 3. Start Crabase and keep it running after reboots
+
+Cua's daemon mode supervises and restarts its own workers, so no service manager is needed. As the `crab` user:
+
+```sh
+sudo -iu crab
+cd ~/crabase
 php server/cua start -d
 php server/cua status
-curl --silent --show-error --include http://127.0.0.1:8787/auth/session
+echo '@reboot cd $HOME/crabase && PATH=/usr/local/bin:/usr/bin:/bin php server/cua start -d' | crontab -
+exit
 ```
 
-The unauthenticated session check must return HTTP `401` with `{"user":null}`. Stop the daemon with `php server/cua stop` if you are installing a supervisor next.
+The `@reboot` line (it replaces the `crab` user's crontab, so re-running is safe) starts Crabase when the VPS boots; its `PATH` must include `/usr/local/bin` so the in-app updater can find Composer. Day to day, as `crab` in `~/crabase`: `php server/cua restart`, `php server/cua stop`, `php server/cua status`.
 
-### 3. Run and supervise the persistent server
-
-For a simple trusted VPS, Cua's daemon mode is sufficient:
+### 4. Serve the domain over HTTPS (Caddy)
 
 ```sh
-php server/cua start -d       # start in the background
-php server/cua status
-php server/cua restart        # graceful stop and start
-php server/cua stop
-```
-
-Do not run both daemon mode and systemd for the same checkout. If the host already uses systemd, create `/etc/systemd/system/crabase.service` as root. Use the foreground command under systemd (`start`, without `-d`); adjust the PHP path and checkout paths as needed:
-
-```ini
-[Unit]
-Description=Crabase workspace
-After=network.target
-
-[Service]
-Type=simple
-User=crab
-Group=crab
-WorkingDirectory=/home/crab/crabase/server
-Environment=HOME=/home/crab
-Environment=PATH=/home/crab/.local/bin:/usr/local/bin:/usr/bin:/bin
-ExecStart=/usr/bin/php cua start
-ExecStop=/usr/bin/php cua stop
-Restart=on-failure
-RestartSec=3
-KillMode=mixed
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Enable and inspect it:
-
-```sh
-sudo systemctl daemon-reload
-sudo systemctl enable --now crabase
-sudo systemctl status crabase
-sudo journalctl -u crabase -f
-```
-
-### 4. Reverse proxy and private access
-
-The browser uses `/` for HTTP and `/ws` for WebSocket. Caddy handles the upgrade automatically; a minimal site block is:
-
-```caddyfile
-http://crabase.example {
-    reverse_proxy /ws* 127.0.0.1:8788
-    reverse_proxy 127.0.0.1:8787
+sudo tee /etc/caddy/Caddyfile >/dev/null <<'EOF'
+crabase.example.com {
+	reverse_proxy /ws 127.0.0.1:8788
+	reverse_proxy 127.0.0.1:8787
 }
+EOF
+sudo systemctl reload caddy
+sudo ufw allow OpenSSH && sudo ufw allow 80,443/tcp && sudo ufw --force enable
+curl -si https://crabase.example.com/auth/session | head -1     # expect HTTP/2 401
 ```
 
-Set `APP_URL` to that origin. For HTTPS, use the HTTPS origin and register the matching OAuth callback; review secure-cookie and origin settings before exposing the service publicly. For a private loopback deployment, tunnel both listeners instead:
+Caddy obtains and renews the certificate, forwards the WebSocket upgrade on `/ws`, and passes the browser address in `X-Forwarded-For`; Crabase trusts that header only from loopback, so login rate limits apply per user. Never open ports 8787 or 8788 in the firewall. Open `https://crabase.example.com` and sign in with the admin from step 2.
 
-Join the same mesh network as the VPS, then use its mesh hostname or address for SSH. The default deployment keeps the application on loopback, so forward both listeners from your computer:
+For TDA Passport login, register `https://crabase.example.com/auth/oauth/callback` (that is, `APP_URL` + `/auth/oauth/callback`), add `TDA_PASSPORT_OAUTH_CLIENT_ID` and `TDA_PASSPORT_OAUTH_CLIENT_SECRET` to `.env`, and run `php server/cua restart` as `crab` in `~/crabase`.
+
+**Private access without a public domain:** put Caddy on loopback with `http://127.0.0.1:8080 { … }` (same two `reverse_proxy` lines), set `APP_URL=http://127.0.0.1:8787`, and have each member run `ssh -N -L 8787:127.0.0.1:8080 crab@VPS` and open `http://127.0.0.1:8787`.
+
+### 5. Updates
+
+Open **Settings → Admin → Updates** as an administrator. Crabase checks the latest stable GitHub release; the update button is enabled only when the checkout is on an older release tag, has no tracked local changes, and no agent jobs or terminals are active. Updating restarts the service and briefly disconnects everyone. The updater:
+
+1. fetches the exact release tag, checks that Composer and npm are available, and stops Crabase;
+2. backs up the database, `.env`, avatars and the built frontend to `server/runtime/update-backups/<time>/`;
+3. checks out the tag, runs `composer install`, `npm ci`, `npm run build` and migrations, and starts Crabase again.
+
+If any step fails after the stop, it restores the previous commit, its dependencies, frontend and database, and restarts the previous release. Progress is pushed live to the page and stored in `server/storage/update.json`; command output is in `server/storage/update.log`. Installations from a release older than the Updates page need one manual update first.
+
+Manual update over SSH (same steps; stop on any failure and do not start after a failed build or migration):
 
 ```sh
-ssh -N \
-  -L 8787:127.0.0.1:8787 \
-  -L 8788:127.0.0.1:8788 \
-  crabase@YOUR_VPS_MESH_HOST
+sudo -iu crab
+cd ~/crabase
+php server/cua stop
+git status --short                 # must print nothing; investigate rather than reset
+git fetch --tags
+git checkout vX.Y.Z
+npm ci
+composer install --working-dir=server --no-dev --optimize-autoloader
+npm run build
+php server/cua migrate
+php server/cua start -d
+exit
 ```
 
-Keep that terminal open and visit http://127.0.0.1:8787 locally. The browser loads the built frontend through port 8787 and connects to the WebSocket through the forwarded port 8788.
+### 6. Backups
 
-Each team member opens their own tunnel and signs in with their own Crabase account. Keep local ports 8787 and 8788 free. For TDA login, register `http://127.0.0.1:8787/auth/oauth/callback` and configure the client ID/secret on the VPS as described above; the browser callback reaches the VPS through the tunnel. Do not put OAuth secrets or the service user's Codex credentials in frontend build variables.
-
-If UFW is enabled, allow SSH but do not add rules for Crabase's ports:
-
-```sh
-sudo ufw allow OpenSSH
-sudo ufw enable
-sudo ufw status
-```
-
-### 5. Persistent data and backups
-
-Keep this application checkout dedicated to deployment—do not use it as a team coding project. With the paths above, preserve:
+Preserve these paths; they contain secrets, so keep copies private and off-host:
 
 | Path | Contents |
 | --- | --- |
-| `/home/crab/crabase/.env` | Server configuration and OAuth secret |
-| `/home/crab/crabase/server/runtime/` | Default SQLite database, uploaded avatars, standalone-chat folders and runtime files |
-| `/home/crab/workspace/` | Original project repositories, `.worktrees`, `.chats`, `.artifacts` and staged attachments |
-| `/home/crab/.codex/` | Codex configuration, authentication and thread history (or the configured Codex data directory) |
+| `/home/crab/crabase/.env` | Configuration and OAuth secret |
+| `/home/crab/crabase/server/runtime/` | SQLite database, avatars, standalone-chat folders, update backups |
+| `/home/crab/workspace/` | Project repositories, `.worktrees`, `.chats`, `.artifacts`, staged attachments |
+| `/home/crab/.codex/` | Codex configuration, authentication and thread history |
 
-If `CRABASE_DB` is overridden, back up that database and its adjacent `avatars/` directory too. Worktrees depend on the original repositories' Git metadata: preserve both, including ignored project data such as `.env` and SQLite files. Never run `git clean -fdx` or deploy with a broad `rsync --delete` across these paths.
-
-Before stopping the service, ask the team to pause changes, let queued/running jobs finish or cancel them, and close terminals and preview processes. Stop Crabase so no new jobs arrive, then back up. The commands below assume the default database path from step 2:
+Ask the team to pause work, then:
 
 ```sh
+sudo -iu crab
+cd ~/crabase
 php server/cua stop
-mkdir -p /home/crab/backups
-chmod 700 /home/crab/backups
-deploy_backup=$(mktemp -d /home/crab/backups/deploy-XXXXXXXX)
-db_path=/home/crab/crabase/server/runtime/crabase.sqlite
-php -r '$db = new PDO("sqlite:".$argv[1]); $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION); $db->exec("VACUUM INTO " . $db->quote($argv[2]));' \
-  "$db_path" "$deploy_backup/crabase.sqlite"
-cp -a .env "$deploy_backup/env"
-cp -a server/runtime "$deploy_backup/runtime"
-cp -a /home/crab/workspace "$deploy_backup/workspace"
-cp -a /home/crab/.codex "$deploy_backup/codex"
-git rev-parse HEAD > "$deploy_backup/commit"
-du -sh "$deploy_backup"
-```
-
-These backups contain secrets; keep them private and copy them to protected off-host storage. Large workspaces can use filesystem snapshots instead of full copies. Do not let other processes write project databases during the backup.
-
-### 6. Manual update
-
-After the backup, while still in the service-user shell at `~/crabase`, update the deployment checkout. It must have no tracked local changes; investigate any changes rather than resetting them:
-
-```sh
-git status --short
-git pull --ff-only
-npm ci
-composer install --working-dir=server --no-dev --optimize-autoloader
-npm run build
-php server/cua migrate
+mkdir -p -m 700 ~/backups
+backup=$(mktemp -d ~/backups/$(date +%Y%m%d)-XXXX)
+php -r '$db = new PDO("sqlite:".$argv[1]); $db->exec("VACUUM INTO ".$db->quote($argv[2]));' server/runtime/crabase.sqlite "$backup/crabase.sqlite"
+cp -a .env server/runtime ~/workspace ~/.codex "$backup/"
+git rev-parse HEAD > "$backup/commit"
+du -sh "$backup"
 php server/cua start -d
-php server/cua status
-curl --silent --show-error --include http://127.0.0.1:8787/auth/session
+exit
 ```
 
-Run commands one at a time and **stop on any failure**; do not start the service after a failed install, build or migration. The unauthenticated session check should return HTTP `401` with a JSON response containing `user: null`; a connection error or `5xx` is a deployment failure. Check sign-in, WebSocket connectivity, opening a project file and a terminal through the tunnel. The session endpoint alone does not verify the agent or terminal host.
+Never run `git clean -fdx`, `rsync --delete` or `php server/cua migrate:rollback` against these paths on production. To restore, stop Crabase, copy the database and the matching runtime/workspace/Codex data back to the same paths with `crab` ownership, check out the commit recorded in the backup, reinstall dependencies and build as in step 5, then run `php server/cua start -d`. A restore loses changes made after the backup.
 
-### 7. Internal CI/CD — push to deploy
+### 7. Troubleshooting
 
-When we add the workflow, use this sequence:
+- `sudo -u crab php /home/crab/crabase/server/cua status` shows the workers; logs are in `server/storage/logs/server.log`, update output in `server/storage/update.log`.
+- **Settings → Admin → Health** shows the Codex app-server, database, agent queue and terminal host.
+- "Codex app-server not running": run `sudo -iu crab codex login status`; set `CODEX_BIN` in `.env` if `codex` is elsewhere.
+- Sign-in or WebSocket rejected: `APP_URL` must match the address in the browser exactly, including `https://` and any port.
+- Update fails with "Could not run composer/npm": Crabase was started without `/usr/local/bin` on its `PATH` (the updater checks before stopping anything). Restart it from a `crab` login shell, and keep the `PATH=` part of the `@reboot` line.
+- Migration state: `sudo -iu crab php ~/crabase/server/cua migrate:status`.
 
-1. On pull requests and pushes to `main`, use an isolated runner with PHP/extensions, Composer, Git, Node/npm and Python 3. Run `npm ci`, `composer install --working-dir=server`, `npm run build`, and `npm test`. Tests use disposable data and ports; **do not run them on the live application host**.
-2. Only a successful push to protected `main` may deploy. Save the built `server/public/` files as an artifact tied to that exact commit SHA. Never build with the production `.env` or Codex credentials.
-3. Give the deployment job private mesh access to the VPS, or use a dedicated trusted runner already on the mesh. GitHub-hosted runners cannot reach a private mesh address without that connection. Do not run untrusted PR jobs on a runner with production access.
-4. Use a GitHub deployment environment for the SSH key, mesh credentials and host settings. Pin the SSH host key using a fingerprint verified outside CI; do not disable host-key checking. Limit service-control privileges to the Crabase unit.
-5. Serialize deployments with a concurrency group; do not cancel a deployment halfway through migrations. Until we implement an active-job/terminal drain check, require operator approval after the team pauses work. Push-to-deploy must not silently interrupt active sessions.
-6. Record the previous deployed SHA, stop the service and make the backups above. Fetch and deploy the **exact tested SHA**, not whatever happens to be the latest `main`. Install PHP dependencies on the VPS and run `npm ci --omit=dev` there for the Node PTY runtime; do not upload a runner's platform-specific `node_modules`.
-7. Install that SHA's frontend artifact into `server/public/`, run migrations, start Cua (or systemd if that is the chosen supervisor) and perform the checks from step 6. Record the deployed SHA and retain the previous artifact and backup. Deployment stops on failure and reports which step failed.
+### Push-to-deploy (planned)
 
-Start with this in-place deployment checkout to keep operations simple. If we later use versioned release folders, keep `.env`, the entire runtime directory, workspace data and Codex storage at stable shared paths; changing `CRABASE_DB` alone does not relocate standalone-chat folders.
-
-### 8. Restore or roll back
-
-Stop Crabase first. For a code-only failure with a compatible database schema, redeploy the previous tested SHA, its dependency versions and frontend artifact. Do not automatically run `php server/cua migrate:rollback` on production.
-
-If a migration or data change requires restoring a backup, preserve the failed state first and restore the database and matching runtime/workspace/Codex data to their original paths and ownership. Use SQLite's restore operation while the app is stopped rather than replacing a database underneath live WAL connections. Restore `.env` only if needed. A data restore loses changes made after the backup; coordinate it with the team before restarting. Never run migration rollback commands against the only copy of workspace data.
-
-For failures, check `server/storage/logs/server.log` (or `journalctl -u crabase` when using systemd), confirm the service user's `CODEX_BIN` and `NODE_BIN`, run `codex login` as that user, verify directory ownership, and run `php server/cua migrate:status` from the checkout root.
+A CI workflow is not included. When one is added: test and build on an isolated runner (never on the production host, never with production `.env` or Codex credentials), deploy only successful pushes to protected `main`, reach the VPS over a pinned SSH host key from a protected deployment environment, serialize deployments, require operator approval until active work can be drained, and run the same stop → backup → install → build → migrate → start sequence as step 5 for the exact tested SHA.
 
 ## Included
 
@@ -294,7 +230,7 @@ Existing installations may retain the three getting-started conversations; fresh
 
 ## Current boundary
 
-This is a **trusted-team foundation**, not a public multi-tenant deployment. Sessions and project sharing protect workspace commands and artifact downloads, but users still share filesystem and terminal privileges. Add OS isolation, TLS and a reviewed deployment configuration before public exposure.
+This is a **trusted-team foundation**, not a public multi-tenant deployment. Sessions and project sharing protect workspace commands and artifact downloads, but users still share filesystem and terminal privileges. The production setup adds HTTPS and login on a public domain, but every account is a trusted collaborator; add OS isolation before giving access to untrusted users.
 
 Chats can run concurrently, so chats sharing a working folder can still make conflicting edits. Use separate worktrees for independent features. Direct edits by someone on the machine can still conflict with an agent's edits. Codex runs with `danger-full-access` and `never` approvals using the local account's credentials. Unsupported interactive server requests receive an explicit error; forms and other advanced desktop integrations are not implemented.
 

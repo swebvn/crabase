@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { Activity, ArrowLeft, Check, CircleCheck, CircleMinus, Folder, LockKeyhole, Moon, Palette, Plus, Search, Sun, TriangleAlert, UserRound, Users } from "lucide-react";
+import { Activity, ArrowLeft, Check, CircleCheck, CircleMinus, Download, Folder, LockKeyhole, Moon, Palette, Plus, Search, Sun, TriangleAlert, UserRound, Users } from "lucide-react";
 import type { Account, Project, Request } from "../types";
 import { ErrorNotice, Button, IconButton, Input } from "../components/ui";
 import { Avatar } from "../components/Avatar";
@@ -8,6 +8,7 @@ import { useAttachments } from "../hooks/useAttachments";
 import { AttachmentList } from "../components/AttachmentList";
 import { HealthPage } from "./HealthPage";
 import { ProjectSharingDialog } from "../components/ProjectSharingDialog";
+import { UpdatePage } from "./UpdatePage";
 
 export function SettingsPage({ theme, setTheme, request, projects, loaded, back }: {
   theme: string; setTheme: (theme: string) => void; request: Request; projects: Project[]; loaded: boolean; back: () => void;
@@ -35,7 +36,7 @@ export function SettingsPage({ theme, setTheme, request, projects, loaded, back 
         <Button variant="text" disabled={user.avatar_required} aria-current={currentPage === "appearance" ? "page" : undefined} onClick={() => setPage("appearance")}><Palette size={16} aria-hidden="true" />Appearance</Button>
         {!!user.admin && !user.avatar_required && <div className="settings-admin-nav" role="group" aria-label="Administration">
           <span className="settings-group">Admin</span>
-          {[{ id: "users", label: "Users", Icon: Users }, { id: "projects", label: "Projects", Icon: Folder }, { id: "health", label: "Health", Icon: Activity }].map(({ id, label, Icon }) =>
+          {[{ id: "users", label: "Users", Icon: Users }, { id: "projects", label: "Projects", Icon: Folder }, { id: "health", label: "Health", Icon: Activity }, { id: "updates", label: "Updates", Icon: Download }].map(({ id, label, Icon }) =>
             <Button key={id} variant="text" aria-current={currentPage === id ? "page" : undefined} onClick={() => setPage(id)}><Icon size={16} aria-hidden="true" />{label}</Button>)}
         </div>}
       </nav>
@@ -57,6 +58,7 @@ export function SettingsPage({ theme, setTheme, request, projects, loaded, back 
         {currentPage === "users" && !!user.admin && <UserManagement request={request} />}
         {currentPage === "projects" && !!user.admin && <ProjectSettings projects={projects} loaded={loaded} request={request} />}
         {currentPage === "health" && !!user.admin && <HealthPage request={request} />}
+        {currentPage === "updates" && !!user.admin && <UpdatePage request={request} />}
       </div>
     </div>
   </div>;

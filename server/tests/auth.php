@@ -17,6 +17,15 @@ try {
         authCheck(!A::allowedHost($host) && !A::allowedOrigin('http://'.$host.':8787'));
     }
     foreach ([null, 'null', 'http://localhost:8787/path', 'http://localhost:9999', 'http://localhost.evil:8787', 'http://evil@localhost:8787'] as $origin) authCheck(!A::allowedOrigin($origin));
+    // A reverse-proxied APP_URL adds exactly its host and origin, and HTTPS makes cookies Secure.
+    putenv('APP_URL=https://Crabase.Example/');
+    authCheck(A::appOrigin() === 'https://crabase.example' && A::secureCookies());
+    authCheck(A::allowedHost('crabase.example') && A::allowedOrigin('https://crabase.example'));
+    foreach (['http://crabase.example', 'https://crabase.example:8443', 'https://evil.crabase.example', 'https://crabase.example.evil'] as $origin) authCheck(!A::allowedOrigin($origin));
+    authCheck(!A::allowedHost('evil.crabase.example'));
+    putenv('APP_URL=http://127.0.0.1:8787');
+    authCheck(!A::secureCookies() && A::allowedOrigin('http://127.0.0.1:5173') && A::allowedOrigin('http://127.0.0.1:8787'));
+    putenv('APP_URL');
     $process = proc_open([PHP_BINARY, dirname(__DIR__).'/cua','migrate'], [0=>['file','/dev/null','r'],1=>['file','/dev/null','w'],2=>STDERR], $pipes);
     authCheck(proc_close($process) === 0);
     $id = A::create(['name'=>'Admin','email'=>'admin@example.com','password'=>'test-password'],true)['id'];

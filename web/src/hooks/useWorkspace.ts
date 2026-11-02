@@ -93,7 +93,10 @@ export function useWorkspace(selected: string) {
       const socket = new WebSocket(endpoint);
       socketRef.current = socket;
       socket.onopen = () => {
-        if (!disposed) setLive(true);
+        if (!disposed) {
+          setLive(true);
+          window.dispatchEvent(new Event("crabase:connected"));
+        }
       };
       socket.onmessage = (event) => {
         if (disposed) return;
@@ -103,6 +106,10 @@ export function useWorkspace(selected: string) {
           rejectPending();
           window.dispatchEvent(new Event('crabase:unauthorized'));
           socket.close();
+          return;
+        }
+        if (packet.type === "update") {
+          window.dispatchEvent(new CustomEvent("crabase:update", { detail: packet.status }));
           return;
         }
         if (typeof packet.id === "number") {

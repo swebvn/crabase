@@ -27,7 +27,7 @@ final class AuthHttp
                 $next = Auth::login($data, $request->ip());
                 Auth::logout($token);
                 return Response::json(['user' => Auth::user($next)], 200, $headers)
-                    ->withCookie(new Cookie(Auth::COOKIE, $next, 604800, '/', '', false, true, 'Strict'));
+                    ->withCookie(new Cookie(Auth::COOKIE, $next, 604800, '/', '', Auth::secureCookies(), true, 'Strict'));
             }
             if ($action === 'logout') {
                 Auth::logout($token);
