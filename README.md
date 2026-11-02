@@ -66,7 +66,7 @@ The integration uses authorization code + S256 PKCE, browser-bound one-use state
 
 One VPS runs everything: a dedicated `crab` user owns the checkout, Crabase listens only on loopback (`8787` HTTP, `8788` WebSocket), Caddy serves your domain over HTTPS with automatic certificates, and Cua's daemon mode keeps it running (started at boot by a `crab` crontab line). Administrators install new releases from **Settings → Admin → Updates**.
 
-Tested on Ubuntu 24.04 LTS; Debian 13 works with the note in step 1. You need a domain (for example `crabase.example.com`) whose DNS `A`/`AAAA` record points to the VPS, and inbound ports 80 and 443 open.
+Tested on Ubuntu 24.04 LTS; Debian 13 works with the note in step 1. You need a domain (for example `crabase.example.com`) whose DNS `A`/`AAAA` record points to the VPS, and inbound ports 80 and 443 open. Size: 2 GB RAM or more (the frontend build peaks around 550 MB, and agents run your project's own tools), and a few GB of disk plus your projects; Crabase and Codex themselves take about 750 MB.
 
 OS isolation is not implemented: agents and terminals run as the `crab` user, so every signed-in member must be a trusted collaborator. Projects default to private; admins share them from **Settings → Admin → Projects**.
 
@@ -76,7 +76,7 @@ Run as a sudo-capable user:
 
 ```sh
 sudo apt update
-sudo apt install -y software-properties-common git curl unzip caddy
+sudo apt install -y software-properties-common git curl unzip caddy bubblewrap
 sudo add-apt-repository -y ppa:ondrej/php        # Ubuntu 24.04 ships PHP 8.3; Crabase needs 8.4+
 sudo apt install -y php8.4-cli php8.4-sqlite3 php8.4-mbstring
 curl -fsSL https://deb.nodesource.com/setup_22.x | sudo bash -
@@ -95,7 +95,7 @@ sudo adduser --disabled-password --gecos '' crab
 sudo -iu crab
 git clone https://github.com/swebvn/crabase.git ~/crabase
 cd ~/crabase
-git checkout "$(git tag --list 'v*' --sort=-v:refname | awk '!/-/{print; exit}')"   # latest stable release
+git checkout "$(git tag --list 'v*' --sort=-v:refname | awk '!/-/{print; exit}')"   # latest stable release; "detached HEAD" is expected
 mkdir -p server/runtime ~/workspace
 cat > .env <<'EOF'
 APP_URL=https://crabase.example.com
@@ -103,6 +103,8 @@ CRABASE_WORKSPACE_ROOT=/home/crab/workspace
 CRABASE_AGENT_NAME=Crab
 CODEX_BIN=/home/crab/.local/bin/codex
 EOF
+git config --global user.name "Crab"                       # author of commits made by agents
+git config --global user.email "crab@crabase.example.com"
 npm ci
 composer install --working-dir=server --no-dev --optimize-autoloader
 npm run build
@@ -113,30 +115,32 @@ exit
 
 Replace `crabase.example.com` with your domain. `APP_URL` must be the exact browser origin: Crabase accepts that host and origin, and makes session cookies `Secure` when it is `https://`. `CRABASE_WORKSPACE_ROOT` is where projects, scratch chats, artifacts and worktrees live; keep it narrow. `CODEX_BIN` points at the Codex install from step 3. Optional settings: `CRABASE_PARALLEL_CHATS` (default 12), and `NODE_BIN` (absolute path) if Node is not in `/usr/bin` or `/usr/local/bin`, for example when it comes from nvm. Stay on a release tag rather than `main`; the in-app updater only upgrades release checkouts.
 
+Agent commits are authored by the `crab` Git identity above; each member's Profile Git name/email is added as a `Co-authored-by` trailer. For agents to clone or push private repositories, give `crab` its own credentials (for example `ssh-keygen -t ed25519` as `crab`, then add `~/.ssh/id_ed25519.pub` as a deploy key or to a bot account).
+
 ### 3. Set up Codex
 
 Crabase runs one persistent `codex app-server` as the `crab` user. Install the official standalone Codex CLI for that user (no root and no Node needed; it lands in `~/.codex/packages/standalone/` with a `~/.local/bin/codex` link, which is what `CODEX_BIN` points at):
 
 ```sh
-sudo -iu crab
-curl -fsSL https://chatgpt.com/codex/install.sh | sh
-~/.local/bin/codex --version
+sudo -iu crab sh -c 'curl -fsSL https://chatgpt.com/codex/install.sh | sh'
+sudo -iu crab /home/crab/.local/bin/codex --version
 ```
 
-Then sign in with **one** of these, still as `crab`:
+Sign Codex in with **one** of these options, then check it:
+
+a) ChatGPT account (Plus/Pro/Business): open the printed link on any device and enter the one-time code.
 
 ```sh
-# a) ChatGPT account (Plus/Pro/Business): open the printed link on any device and enter the code
-~/.local/bin/codex login --device-auth
-
-# b) OpenAI API key, read without echoing it or saving it in shell history
-read -rsp 'API key: ' key && printf '%s' "$key" | ~/.local/bin/codex login --with-api-key; unset key
-
-~/.local/bin/codex login status     # must report that you are logged in / an API key is configured
-exit
+sudo -iu crab /home/crab/.local/bin/codex login --device-auth
 ```
 
-c) **OpenAI-compatible proxy or other provider:** sign in with that provider's key as in (b), then point Codex at it in `/home/crab/.codex/config.toml`:
+b) OpenAI API key, read without echoing it or saving it in shell history:
+
+```sh
+sudo -iu crab bash -c 'read -rsp "API key: " key && printf %s "$key" | ~/.local/bin/codex login --with-api-key'
+```
+
+c) OpenAI-compatible proxy or other provider: sign in with that provider's key as in (b), then run `sudo -iu crab nano /home/crab/.codex/config.toml` and add:
 
 ```toml
 model_provider = "team"
@@ -147,6 +151,10 @@ name = "team"
 base_url = "https://llm-proxy.example.com/v1"
 wire_api = "responses"
 requires_openai_auth = true           # send the key saved by `codex login --with-api-key`
+```
+
+```sh
+sudo -iu crab /home/crab/.local/bin/codex login status    # must report a ChatGPT login or a configured API key
 ```
 
 Crabase sets the working folder, `danger-full-access` sandbox and `never` approvals for every chat itself, and lists models from Codex's `model/list`, so nothing else is required in `config.toml`. After Crabase starts (step 4), **Settings → Admin → Health** should show *Codex app-server: ok* and a non-zero model count. To update Codex later, re-run the installer as `crab`, then `php server/cua restart` in `~/crabase`.
@@ -179,6 +187,8 @@ sudo systemctl reload caddy
 sudo ufw allow OpenSSH && sudo ufw allow 80,443/tcp && sudo ufw --force enable
 curl -si https://crabase.example.com/auth/session | head -1     # expect HTTP/2 401
 ```
+
+If SSH listens on a port other than 22, run `sudo ufw allow <port>/tcp` **before** enabling ufw, or you will lock yourself out. If your VPS provider has its own firewall, allow 80 and 443 there too.
 
 Caddy obtains and renews the certificate, forwards the WebSocket upgrade on `/ws`, and passes the browser address in `X-Forwarded-For`; Crabase trusts that header only from loopback, so login rate limits apply per user. Never open ports 8787 or 8788 in the firewall. Open `https://crabase.example.com` and sign in with the admin from step 2.
 

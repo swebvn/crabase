@@ -51,6 +51,9 @@ final class Codex
     public function onWorkerStart(Worker $worker): void
     {
         $this->loop = $worker->loop;
+        // runtime/ is not in Git; codex.log and terminal.log appends crash the worker without this folder.
+        $logs = dirname(__DIR__, 2).'/runtime/logs';
+        if (!is_dir($logs) && !mkdir($logs, 0770, true) && !is_dir($logs)) throw new \RuntimeException('Could not create '.$logs);
         Store::db();
         $db = Store::connection();
         Store::notify($db->table('jobs')->where('status', 'running')->update(['status'=>'failed']));
