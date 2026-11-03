@@ -23,8 +23,11 @@ final class WorkspaceFolders
             throw new InvalidArgumentException('Choose a readable folder.');
         }
         $defaultRoot = self::root();
-        if (self::hasSymlink($value) || ($path !== $defaultRoot && self::hasHiddenSegment($path))) {
-            throw new InvalidArgumentException('Hidden folders and symlink paths cannot be projects.');
+        if (self::hasSymlink($value)) {
+            throw new InvalidArgumentException('Symlinked paths cannot be projects. Use the real folder path.');
+        }
+        if (self::internal($path, $defaultRoot)) {
+            throw new InvalidArgumentException("Crabase's own .chats, .worktrees and .artifacts folders cannot be projects.");
         }
         if (!$allowRoot && ($path === DIRECTORY_SEPARATOR || $path === $defaultRoot)) {
             throw new InvalidArgumentException('Choose a project folder, not a workspace root.');
@@ -40,12 +43,13 @@ final class WorkspaceFolders
         if ($entries === false) throw new InvalidArgumentException('Unable to read this folder.');
         $folders = [];
         foreach ($entries as $name) {
-            if (str_starts_with($name, '.')) continue;
+            if ($name === '.' || $name === '..') continue;
             try { $child = self::resolve($path.'/'.$name); }
             catch (InvalidArgumentException) { continue; }
             $folders[] = ['name'=>$name, 'path'=>$child];
         }
-        usort($folders, fn($a, $b) => strnatcasecmp($a['name'], $b['name']));
+        // Hidden folders are listed too, after the visible ones.
+        usort($folders, fn($a, $b) => str_starts_with($a['name'], '.') <=> str_starts_with($b['name'], '.') ?: strnatcasecmp($a['name'], $b['name']));
         return ['root'=>$root, 'path'=>$path, 'parent'=>$path === DIRECTORY_SEPARATOR ? null : dirname($path), 'folders'=>$folders];
     }
 
@@ -53,8 +57,8 @@ final class WorkspaceFolders
     {
         $parent = self::resolve($data['path'] ?? self::root(), true);
         $name = Input::text($data['name'] ?? null, 255);
-        if (str_contains($name, "\0") || strpbrk($name, "/\\") !== false || preg_match('/[\x00-\x1F\x7F]/', $name) || str_starts_with($name, '.')) {
-            throw new InvalidArgumentException('Enter a visible folder name without path separators.');
+        if ($name === '' || $name === '.' || $name === '..' || str_contains($name, "\0") || strpbrk($name, "/\\") !== false || preg_match('/[\x00-\x1F\x7F]/', $name)) {
+            throw new InvalidArgumentException('Enter a folder name without path separators.');
         }
         $path = $parent.'/'.$name;
         if (file_exists($path) || is_link($path)) throw new InvalidArgumentException('That folder already exists.');
@@ -62,10 +66,11 @@ final class WorkspaceFolders
         return ['name'=>$name, 'path'=>self::resolve($path)];
     }
 
-    private static function hasHiddenSegment(string $path): bool
+    /** Crabase keeps chat scratch space, managed worktrees and uploads here; they are never projects. */
+    private static function internal(string $path, string $root): bool
     {
-        foreach (explode('/', trim($path, '/')) as $segment) {
-            if ($segment !== '' && str_starts_with($segment, '.')) return true;
+        foreach (['.chats', '.worktrees', '.artifacts'] as $folder) {
+            if ($path === $root.'/'.$folder || str_starts_with($path, $root.'/'.$folder.'/')) return true;
         }
         return false;
     }

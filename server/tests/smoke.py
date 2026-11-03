@@ -234,7 +234,7 @@ if __name__=='__main__':
     assert set(workspace)=={'paths','ignored','git','branch','changes'}
     folders=first.call('projectFolders')
     expected_parent = None if folders['path'] == '/' else str(Path(folders['path']).parent)
-    assert folders['parent'] == expected_parent and all(not f['name'].startswith('.') for f in folders['folders'])
+    assert folders['parent'] == expected_parent and not {'.chats','.worktrees','.artifacts'} & {f['name'] for f in folders['folders']}
     first.call('projectFolders', {'path':'/does-not-exist-crabase'}, error=True)
     first.call('unknown',error=True)
     first.call('create',{'project_id':'missing'},error=True)
