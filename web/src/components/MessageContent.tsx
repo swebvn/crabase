@@ -39,8 +39,11 @@ export function MessageContent({ children, onFileMention }: { children: string; 
                   {children}
                 </a>
               </span>
-            ) : (
+            ) : href?.startsWith("#") ? (
               <a href={href}>{children}</a>
+            ) : (
+              // Links in messages always open in a new tab so the workspace stays open.
+              <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>
             ),
         }}
       >
