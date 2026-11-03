@@ -78,12 +78,14 @@ export function Composer({
   }
   const [draft, setDraft] = useState(() => draftRef.current);
   useEffect(() => setDraft(draftRef.current), [draftRef, draftVersion]);
-  const [model, setModel] = useState(
-    () => sessionStorage.getItem("crabase.model") || "",
-  );
-  const [effort, setEffort] = useState(
-    () => sessionStorage.getItem("crabase.effort") || "",
-  );
+  // Each chat stores its own model and reasoning level on the server; a new chat starts from the default.
+  const [model, setModel] = useState(() => chat?.model || "");
+  const [effort, setEffort] = useState(() => chat?.effort || "");
+  useEffect(() => {
+    if (!chat) return;
+    setModel(chat.model || "");
+    setEffort(chat.effort || "");
+  }, [chat?.id, chat?.model, chat?.effort]);
   const [context, setContext] = useState<{ branch: string | null; path: string; worktree: string | null; detached: boolean } | null>(null);
   const [branchError, setBranchError] = useState(false);
   const [contextVersion, setContextVersion] = useState(0);
@@ -110,10 +112,11 @@ export function Composer({
     [filePaths, fileMention],
   );
   const activeFileMention = Math.min(fileMentionSelection, Math.max(0, fileMentionResults.length - 1));
-  useEffect(() => {
-    if (chosen) sessionStorage.setItem("crabase.model", chosen.model);
-    sessionStorage.setItem("crabase.effort", reasoning);
-  }, [chosen?.model, reasoning]);
+  function saveSelection(nextModel: string, nextEffort: string | null) {
+    if (!chat) return;
+    setModelError("");
+    request("chatModel", { chat_id: chat.id, model: nextModel, effort: nextEffort }).catch((error: Error) => setModelError(error.message));
+  }
   useEffect(() => {
     if (CSS.supports("field-sizing", "content")) return;
     const el = textarea.current;
@@ -359,8 +362,8 @@ export function Composer({
               <IconButton label="Attach files" disabled={busy || !live || attachments.files.length >= 10} onClick={() => picker.current?.click()}><Paperclip size={17} /></IconButton>
               <ModelPicker models={data.models} chosen={chosen} reasoning={reasoning}
                 unavailable={modelsUnavailable}
-                selectModel={model => { setModel(model); setEffort(''); }}
-                selectReasoning={setEffort} />
+                selectModel={model => { setModel(model); setEffort(''); saveSelection(model, null); }}
+                selectReasoning={effort => { setEffort(effort); if (chosen) saveSelection(chosen.model, effort); }} />
               {context?.branch && (
                 <span className="composer-branch" tabIndex={0}
                   title={`${context.detached ? 'Detached HEAD: ' : 'Branch: '}${context.branch}\n${context.worktree ? `Worktree: ${context.worktree}\n` : ''}${context.path}`}

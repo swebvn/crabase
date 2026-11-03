@@ -17,6 +17,8 @@ final readonly class Chat
         public ChatStatus $status,
         public bool $archived,
         public ?string $thread_id,
+        public ?string $model,
+        public ?string $effort,
         #[ColumnName('created_at')] public DateTimeImmutable $createdAt,
         #[ColumnName('updated_at')] public DateTimeImmutable $updatedAt,
     ) {

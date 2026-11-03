@@ -174,6 +174,7 @@ if __name__=='__main__':
         assert 'already a project' in second.call('project',{'path':temp},error=True)
         assert owned not in [c['id'] for c in hidden['chats']]
         second.call('sync',{'chat_id':owned},error=True)
+        second.call('chatModel',{'chat_id':owned,'model':'any'},error=True)
         for action in ['projectWorkspace','projectFile','projectSave','projectDiff','projectContext','create','projectPin']:
             second.call(action,{'project_id':project_id,'path':'keep.txt','pinned':True},error=True)
         for action in ['message','archive','cancel','approval']:

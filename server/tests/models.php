@@ -31,6 +31,27 @@ try {
         catch (InvalidArgumentException) {}
     }
     check(count(S::all('SELECT * FROM messages WHERE chat_id=?',[$chat])) === 2);
+    // Each chat stores its own model: agent sends record it, the picker saves it, notes and bad choices never change it.
+    $chatModel = fn (string $id) => S::connection()->table('chats')->where('id', $id)->select('model', 'effort')->first();
+    check($chatModel($chat) === ['model'=>'test-model','effort'=>'low']);
+    ModelCatalog::replace([...$models, ['model'=>'other-model','defaultReasoningEffort'=>'medium','supportedReasoningEfforts'=>[['reasoningEffort'=>'medium']]]]);
+    check(A::handle('chatModel', ['chat_id'=>$chat,'model'=>'other-model']) === ['model'=>'other-model','effort'=>'medium']);
+    check($chatModel($chat) === ['model'=>'other-model','effort'=>'medium']);
+    check(A::handle('chatModel', ['chat_id'=>$chat,'model'=>'test-model','effort'=>'high']) === ['model'=>'test-model','effort'=>'high']);
+    $otherChat = A::handle('create', ['title'=>'Separate model'])['id'];
+    check($chatModel($otherChat) === ['model'=>null,'effort'=>null]);
+    A::handle('message', ['chat_id'=>$otherChat,'body'=>'note only','user_id'=>$users['user1'],'mode'=>'note']);
+    check($chatModel($otherChat) === ['model'=>null,'effort'=>null]);
+    A::handle('message', ['chat_id'=>$otherChat,'body'=>'ask','user_id'=>$users['user1'],'mode'=>'agent','model'=>'other-model']);
+    check($chatModel($otherChat) === ['model'=>'other-model','effort'=>'medium'] && $chatModel($chat) === ['model'=>'test-model','effort'=>'high']);
+    foreach ([['model'=>'missing'], ['model'=>'test-model','effort'=>'medium'], [], ['effort'=>'low'], ['model'=>'test-model','effort'=>'ultra']] as $bad) {
+        try { A::handle('chatModel', ['chat_id'=>$chat, ...$bad]); throw new RuntimeException('Invalid chat model accepted'); }
+        catch (InvalidArgumentException) {}
+    }
+    try { A::handle('chatModel', ['chat_id'=>'missing','model'=>'test-model']); throw new RuntimeException('Missing chat accepted'); } catch (InvalidArgumentException) {}
+    check($chatModel($chat) === ['model'=>'test-model','effort'=>'high']);
+    check(S::connection()->table('chats')->into(Chat::class)->find($chat)->model === 'test-model');
+    ModelCatalog::replace($models);
     $longTitle = str_repeat('x', 512);
     A::handle('rename', ['chat_id'=>$chat, 'title'=>$longTitle]);
     check(S::connection()->table('chats')->into(Chat::class)->find($chat)->title === $longTitle);

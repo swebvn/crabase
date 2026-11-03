@@ -58,6 +58,7 @@ final class Actions
             'create' => self::createChat($data),
             'rename' => self::renameChat($data),
             'message' => self::sendMessage($data),
+            'chatModel' => self::saveChatModel($data),
             'archive' => self::archiveChat($data),
             'cancel' => self::cancelJobs($data),
             'approval' => self::decideApproval($data),
@@ -198,11 +199,23 @@ final class Actions
             $db->table('chats')->where('id', $id)->update(['updated_at' => gmdate('c')]);
             if ($mode === 'agent') {
                 $db->table('jobs')->insert(['chat_id' => $id, 'prompt' => $body, 'model' => $options['model'], 'effort' => $options['effort'], 'message_id'=>$messageId]);
+                if ($options['model'] !== null) $db->table('chats')->where('id', $id)->update(['model' => $options['model'], 'effort' => $options['effort']]);
                 $db->table('chats')->where('id', $id)->where('status', 'idle')->update(['status' => 'queued']);
             }
             Store::event($id, $author . ($mode === 'agent' ? ' asked '.Store::agentName() : ' added a note'));
         }); } catch (\Throwable $e) { Attachments::restore($attachments, $id); throw $e; }
         return ['ok' => true];
+    }
+
+    /** The composer's model and reasoning level are stored on the chat, shared by everyone in it. */
+    public static function saveChatModel(array $data): array
+    {
+        $id = Input::text($data['chat_id'] ?? null, 64);
+        if (!Store::connection()->table('chats')->where('id', $id)->exists()) throw new InvalidArgumentException('Conversation not found.');
+        if (($data['model'] ?? null) === null) throw new InvalidArgumentException('Select a model.');
+        $options = self::agentOptions($data);
+        Store::notify(Store::connection()->table('chats')->where('id', $id)->update(['model' => $options['model'], 'effort' => $options['effort']]));
+        return $options;
     }
 
     public static function archiveChat(array $data): array

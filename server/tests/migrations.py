@@ -23,14 +23,29 @@ with tempfile.TemporaryDirectory(prefix='crabase-migrations-') as temp:
     path = Path(temp) / 'test.sqlite'
     crab(path, 'migrate')
     with sqlite3.connect(path) as db:
-        assert db.execute("SELECT count(*) FROM migrations WHERE batch > 0").fetchone() == (19,)
+        assert db.execute("SELECT count(*) FROM migrations WHERE batch > 0").fetchone() == (20,)
         assert not db.execute("SELECT name FROM sqlite_master WHERE name='phinxlog'").fetchall()
         db.execute("INSERT INTO projects (id,name,path) VALUES ('test','Test','/test')")
         db.execute("INSERT INTO chats (id,title,created_at,updated_at) VALUES ('1234567890abcdef','Preserve me','2026-09-09','2026-09-09')")
     crab(path, 'migrate')
     with sqlite3.connect(path) as db:
         assert db.execute('SELECT title FROM chats').fetchall() == [('Preserve me',)]
-        assert db.execute('SELECT count(*) FROM migrations').fetchone() == (19,)
+        assert db.execute('SELECT count(*) FROM migrations').fetchone() == (20,)
+
+    # The chat model migration fills existing chats from their latest agent request.
+    backfill = Path(temp) / 'backfill.sqlite'
+    crab(backfill, 'migrate')
+    with sqlite3.connect(backfill) as db:
+        db.execute("DELETE FROM migrations WHERE name='20261103000000_chat_model_selection'")
+        db.execute('ALTER TABLE chats DROP COLUMN effort'); db.execute('ALTER TABLE chats DROP COLUMN model')
+        db.execute("INSERT INTO chats (id,title,created_at,updated_at) VALUES ('c1','Old','2026-09-09','2026-09-09'),('c2','Never asked','2026-09-09','2026-09-09')")
+        db.execute("INSERT INTO jobs (chat_id,prompt,model,effort) VALUES ('c1','a','gpt-old','low'),('c1','b','gpt-new','high'),('c1','note',NULL,NULL)")
+    crab(backfill, 'migrate')
+    with sqlite3.connect(backfill) as db:
+        assert db.execute("SELECT id,model,effort FROM chats ORDER BY id").fetchall() == [('c1','gpt-new','high'),('c2',None,None)]
+    crab(backfill, 'migrate:rollback')
+    with sqlite3.connect(backfill) as db:
+        assert 'model' not in [row[1] for row in db.execute('PRAGMA table_info(chats)')]
 
     crab(path, 'migrate:rollback')
     with sqlite3.connect(path) as db:
