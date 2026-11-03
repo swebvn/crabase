@@ -496,6 +496,8 @@ small {
   height: 24px;
   padding: 0;
 }
+.private-lock { display: inline-flex; flex-shrink: 0; vertical-align: -1px; color: var(--subtle); }
+.project-switcher-copy .private-lock { margin-left: var(--space-1); }
 .project-label .spin {
   flex-shrink: 0;
   margin-left: auto;

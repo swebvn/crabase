@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import type { Avatars, Chat, Project } from "../types";
 import { Avatar, AvatarStack } from "./Avatar";
-import { Button, IconButton, Menu, MenuItem, MenuLabel } from "./ui";
+import { Button, IconButton, Menu, MenuItem, MenuLabel, PrivateLock } from "./ui";
 import { useProjectExpansion } from "../hooks/useProjectExpansion";
 import { clampSidebarWidth } from "../lib/layout";
 import { sortProjects, type ProjectSort } from "../lib/projects";
@@ -213,6 +213,7 @@ export function Sidebar({
           >
             {project.parent_id ? <GitBranch size={16} aria-hidden="true" /> : expanded ? <FolderOpen size={16} aria-hidden="true" /> : <Folder size={16} aria-hidden="true" />}
             <span className="truncate" title={project.parent_id ? `${project.name}\n${project.path}` : project.name}>{project.name}{project.archived ? " · Archived" : ""}</span>
+            <PrivateLock project={project} />
             {busy && <Loader2 size={13} className="spin" aria-label="Agent working" />}
           </button>
           <div className="project-actions">

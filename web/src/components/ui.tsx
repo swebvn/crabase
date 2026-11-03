@@ -12,7 +12,8 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
-import { Check, X } from "lucide-react";
+import { Check, LockKeyhole, X } from "lucide-react";
+import type { Project } from "../types";
 const MenuClose = createContext(() => {});
 
 type ButtonVariant = "primary" | "secondary" | "text";
@@ -34,6 +35,12 @@ export function Button({ variant = "secondary", className, ...props }: ButtonCon
 
 export function ButtonLink({ variant = "secondary", className, ...props }: ComponentPropsWithRef<"a"> & ButtonStyleProps) {
   return <a {...props} className={buttonClassName(variant, className)} />;
+}
+
+/** Lock beside a private original project's name; worktrees inherit access, so they never show it. */
+export function PrivateLock({ project }: { project: Pick<Project, "parent_id" | "visibility"> }) {
+  if (project.parent_id || project.visibility !== "private") return null;
+  return <span className="private-lock" role="img" aria-label="Private project" title="Private project"><LockKeyhole size={12} aria-hidden="true" /></span>;
 }
 
 export function IconButton({

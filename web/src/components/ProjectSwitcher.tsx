@@ -2,7 +2,7 @@ import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
 import { Check, ChevronsUpDown, Folder, Loader2, MessageSquare, MoreHorizontal, Plus, Search } from "lucide-react";
 import type { Chat, Project } from "../types";
 import { sortProjects, type ProjectSort } from "../lib/projects";
-import { Button, Dialog, Input, Menu, MenuItem, MenuLabel } from "./ui";
+import { Button, Dialog, Input, Menu, MenuItem, MenuLabel, PrivateLock } from "./ui";
 
 export function ProjectSwitcher({ projects, chats, pins, current, loaded, select, add, sort, setSort, showArchived, setShowArchived }: {
   projects: Project[]; chats: Chat[]; pins: string[]; current?: Project; loaded: boolean;
@@ -54,7 +54,7 @@ export function ProjectSwitcher({ projects, chats, pins, current, loaded, select
                 const busy = chats.some(chat => chat.status !== "idle" && (chat.project_id === project.id || projects.some(child => child.id === chat.project_id && child.parent_id === project.id)));
                 return <Button variant="text" className="project-switcher-option" key={project.id} aria-pressed={current?.id === project.id} onClick={() => choose(project.id)}>
                   <Folder size={18} aria-hidden="true" />
-                  <span className="project-switcher-copy"><strong>{project.name}{!!project.archived && " · Archived"}</strong><small className="truncate" title={project.path}>{project.path}</small></span>
+                  <span className="project-switcher-copy"><strong>{project.name}{!!project.archived && " · Archived"}<PrivateLock project={project} /></strong><small className="truncate" title={project.path}>{project.path}</small></span>
                   {busy && <Loader2 size={14} className="spin" aria-label="Agent working" />}
                   {current?.id === project.id && <Check size={16} aria-hidden="true" />}
                 </Button>;

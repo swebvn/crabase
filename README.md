@@ -68,7 +68,7 @@ One VPS runs everything: a dedicated `crab` user owns the checkout, Crabase list
 
 Tested on Ubuntu 24.04 LTS; Debian 13 works with the note in step 1. You need a domain (for example `crabase.example.com`) whose DNS `A`/`AAAA` record points to the VPS, and inbound ports 80 and 443 open. Size: 2 GB RAM or more (the frontend build peaks around 550 MB, and agents run your project's own tools), and a few GB of disk plus your projects; Crabase and Codex themselves take about 750 MB.
 
-OS isolation is not implemented: agents and terminals run as the `crab` user, so every signed-in member must be a trusted collaborator. Any signed-in user can add a project or create a worktree; projects default to private, with the creator as the first member. Admins share them from **Settings → Admin → Projects**, and only admins archive or delete projects.
+OS isolation is not implemented: agents and terminals run as the `crab` user, so every signed-in member must be a trusted collaborator. Any signed-in user can add a project or create a worktree. New projects are public (visible to every signed-in user), and the creator is also recorded as a member; admins can make a project private and choose its members from **Settings → Admin → Projects**, and only admins archive or delete projects.
 
 ### 1. Install system packages
 

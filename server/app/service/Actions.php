@@ -76,7 +76,7 @@ final class Actions
     }
 
 
-    /** Private by default: a non-admin creator becomes the project's first member. */
+    /** New projects are public (all signed-in users); the non-admin creator is also a member, so they keep access if an admin makes it private. */
     public static function createProject(array $data, ?array $actor = null): array
     {
         $path = WorkspaceFolders::resolve($data['path'] ?? null);
@@ -92,7 +92,7 @@ final class Actions
         }
         $id = bin2hex(random_bytes(8));
         Store::transaction(function () use ($id, $name, $path, $actor): void {
-            Store::connection()->table('projects')->insert(['id' => $id, 'name' => $name, 'path' => $path]);
+            Store::connection()->table('projects')->insert(['id' => $id, 'name' => $name, 'path' => $path, 'visibility' => 'public']);
             if ($actor && !$actor['admin']) Store::connection()->table('project_members')->insert(['project_id' => $id, 'user_id' => $actor['id']]);
         });
         Store::event(null, "Added project $name");

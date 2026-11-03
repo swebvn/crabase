@@ -142,13 +142,14 @@ if __name__=='__main__':
     assert health['checked_at'] and len(health['checks']) >= 6
     assert {'WebSocket worker','Codex app-server','Database','Agent queue','Terminal host','Runtime storage','Workspace storage'} <= {check['name'] for check in health['checks']}
     assert all(check['status'] in {'ok','warning','error','idle'} and check['detail'] for check in health['checks'])
-    # Any signed-in user can browse folders and add projects; the creator becomes the private project's member.
+    # Any signed-in user can browse folders and add projects; new projects are public and the creator is also a member.
     assert 'folders' in second.call('projectFolders')
     second.call('worktreeCreate',{'project_id':'invalid','branch':'feature/test'},error=True)
     with tempfile.TemporaryDirectory(prefix='crabase-member-') as created_path:
         created=second.call('project',{'path':created_path})['id']
         assert created in [p['id'] for p in second.call('sync')['state']['projects']]
-        assert first.call('projectSharing',{'project_id':created}) == {'visibility':'private','members':[accounts[1]['id']]}
+        assert first.call('projectSharing',{'project_id':created}) == {'visibility':'public','members':[accounts[1]['id']]}
+        assert created in [p['id'] for p in first.call('sync')['state']['projects']]
         assert second.call('project',{'path':created_path})['id'] == created
         second.call('projectArchive',{'project_id':created,'archived':True},error=True)
         second.call('projectDelete',{'project_id':created},error=True)
