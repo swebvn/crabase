@@ -66,6 +66,12 @@ label > select {
   padding: var(--space-2) var(--space-3);
   font-size: var(--type-control);
 }
+/* Single-line fields share the button height so fields and buttons align in every row. */
+input.input:not([type="checkbox"], [type="radio"], [type="file"], [type="range"]),
+label > select {
+  height: var(--control-height);
+  padding-block: 0;
+}
 .input:is([type="checkbox"], [type="radio"]) {
   accent-color: var(--accent);
 }

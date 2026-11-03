@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import type { Account } from "../types";
 import { ErrorNotice, ButtonLink, Button, Input } from "./ui";
+import { Crab } from "./Crab";
 
 const AuthContext = createContext<{ user: Account; refresh: () => Promise<void>; logout: () => Promise<void> } | null>(null);
 export function useAuth() {
@@ -53,6 +54,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
     } catch (error) { setError((error as Error).message); }
     finally { setBusy(false); }
   }}>
+    <Crab size={32} />
     <h1>Sign in to Crabase</h1>
     {oauth && <ButtonLink variant="primary" href="/auth/oauth/start">Sign in with TDA</ButtonLink>}
     {oauth && <Button type="button" variant="text" aria-expanded={passwordLogin} aria-controls="password-login" onClick={() => { setPasswordLogin(!passwordLogin); setError(''); }}>

@@ -107,7 +107,7 @@ function ChatLink({
       <div className="chat-trailing">
         {chat.status !== "idle" && (
           <Loader2
-            size={13}
+            size={14}
             className="spin chat-progress"
             aria-label={chat.status}
           />
@@ -116,7 +116,7 @@ function ChatLink({
           viewport
           className="chat-menu"
           label={`Options for ${chat.title}`}
-          icon={<MoreHorizontal size={15} />}
+          icon={<MoreHorizontal size={14} />}
         >
           <MenuItem onClick={() => rename(chat)}>Rename</MenuItem>
           <MenuItem onClick={() => archive(chat)}>Archive</MenuItem>
@@ -180,7 +180,7 @@ export function Sidebar({
   const standaloneChats = chats.filter(chat => !chat.project_id && (!chat.archived || chat.id === selected));
   const directChats = chats.filter(chat => (currentProject ? chat.project_id === currentProject.id : !chat.project_id) && (!chat.archived || chat.id === selected));
   const worktrees = currentProject ? sortProjects(projects.filter(child => child.parent_id === currentProject.id && (showArchived || !child.archived || child.id === activeProjectId)), chats, "updated") : [];
-  const projectMenu = (project: Project) => <Menu viewport label={`Project options for ${project.name}`} icon={<MoreHorizontal size={16} />}>
+  const projectMenu = (project: Project) => <Menu viewport label={`Project options for ${project.name}`} icon={<MoreHorizontal size={14} />}>
     {!focused && !project.parent_id && <MenuItem onClick={() => switchProject(project.id)}>Open project view</MenuItem>}
     {!project.parent_id && <MenuItem onClick={() => pinProject(project)}>{pins.includes(project.id) ? "Unpin" : "Pin"}</MenuItem>}
     {!project.parent_id && !project.archived && <MenuItem onClick={() => createWorktree(project)}>Create worktree</MenuItem>}
@@ -214,7 +214,7 @@ export function Sidebar({
             {project.parent_id ? <GitBranch size={16} aria-hidden="true" /> : expanded ? <FolderOpen size={16} aria-hidden="true" /> : <Folder size={16} aria-hidden="true" />}
             <span className="truncate" title={project.parent_id ? `${project.name}\n${project.path}` : project.name}>{project.name}{project.archived ? " · Archived" : ""}</span>
             <PrivateLock project={project} />
-            {busy && <Loader2 size={13} className="spin" aria-label="Agent working" />}
+            {busy && <Loader2 size={14} className="spin" aria-label="Agent working" />}
           </button>
           <div className="project-actions">
           {!focused && !project.parent_id && <IconButton label={`Open project view for ${project.name}`} onClick={() => switchProject(project.id)}><ArrowUpRight size={14} /></IconButton>}
@@ -223,7 +223,7 @@ export function Sidebar({
             label={`New chat in ${project.name}`}
             onClick={() => newChat(project.id)}
           >
-            <Plus size={13} />
+            <Plus size={14} />
           </IconButton>
           </div>
         </div>
@@ -272,7 +272,7 @@ export function Sidebar({
           {focused ? <ProjectSwitcher projects={projects} chats={chats} pins={pins} current={currentProject} loaded={loaded} sort={projectSort} setSort={setProjectSort} showArchived={showArchived} setShowArchived={setShowArchived}
             select={switchProject} add={() => showDialog("project")} /> : <Button variant="text" className="brand" onClick={() => newChat("")}><Crab size={26} /><span>Crabase</span></Button>}
           <IconButton label="Close sidebar" onClick={close}>
-            <PanelLeft size={17} />
+            <PanelLeft size={16} />
           </IconButton>
         </div>
         <nav aria-label="Workspace" className="primary-nav">
@@ -281,7 +281,7 @@ export function Sidebar({
             className={`nav-item ${!selected ? "selected" : ""}`}
             onClick={() => newChat(currentProject?.id)}
           >
-            <SquarePen size={17} />
+            <SquarePen size={16} />
             <span>New chat</span>
             <kbd>{modifierKey} ⇧ O</kbd>
           </button>
@@ -313,7 +313,7 @@ export function Sidebar({
               {projectsOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
             </button>
             <div className="section-actions">
-              <Menu viewport label="Sort projects" icon={<MoreHorizontal size={16} />}>
+              <Menu viewport label="Sort projects" icon={<MoreHorizontal size={14} />}>
                 <MenuLabel>Sort by</MenuLabel>
                 {(
                   [
@@ -338,7 +338,7 @@ export function Sidebar({
                 label="Add project"
                 onClick={() => showDialog("project")}
               >
-                <Plus size={15} />
+                <Plus size={14} />
               </IconButton>
             </div>
           </div>
@@ -365,10 +365,10 @@ export function Sidebar({
             <span className="truncate" title={name}>{name}</span>
           </button>
           <IconButton label={`Search chats and projects (${modifierKey}+K)`} onClick={() => showDialog("search")}>
-            <Search size={17} />
+            <Search size={16} />
           </IconButton>
           <IconButton label="Settings" onClick={() => showDialog("settings")}>
-            <Settings size={17} />
+            <Settings size={16} />
           </IconButton>
         </div>
         <div

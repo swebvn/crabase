@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Search, X } from "lucide-react";
+import { Command as CommandIcon, Search, X } from "lucide-react";
 import type { Avatars, Chat, Project } from "../types";
 import { AvatarStack } from "./Avatar";
 import { Dialog, IconButton, Input } from "./ui";
@@ -50,7 +50,7 @@ export function SearchDialog({ chats, projects, avatars, commands = [], open, cl
 
   return <Dialog title="Search chats and projects" close={close} className="search-dialog" minimal>
     <div className="search-dialog-field">
-      <Search size={18} aria-hidden="true" />
+      <Search size={16} aria-hidden="true" />
       <Input
         ref={inputRef}
         autoFocus
@@ -101,6 +101,7 @@ export function SearchDialog({ chats, projects, avatars, commands = [], open, cl
     </div>
     <div id="search-result-list" className="search-results" role="listbox" aria-label="Search results">
       {filteredCommands.map((command, commandIndex) => <button type="button" tabIndex={-1} key={command.id} id={`command-result-${command.id}`} role="option" aria-selected={selectedIndex === commandIndex} onMouseEnter={() => setSelectedIndex(commandIndex)} onClick={() => selectResult(commandIndex)}>
+        <span className="search-result-lead"><CommandIcon size={16} aria-hidden="true" /></span>
         <span className="search-result-copy"><strong>{command.label}</strong><small>{command.shortcut || "Command"}</small></span>
       </button>)}
       {results.map((chat, index) => <button
@@ -113,7 +114,7 @@ export function SearchDialog({ chats, projects, avatars, commands = [], open, cl
         onMouseEnter={() => setSelectedIndex(filteredCommands.length + index)}
         onClick={() => selectResult(filteredCommands.length + index)}
       >
-        <AvatarStack users={chat.participants} avatars={avatars} />
+        <span className="search-result-lead"><AvatarStack users={chat.participants} avatars={avatars} /></span>
         <span className="search-result-copy">
           <strong><HighlightedText text={chat.title} query={query} /></strong>
           <small>{chat.project_name || "Standalone chat"}{chat.archived ? " · Archived" : ""}</small>
@@ -121,7 +122,7 @@ export function SearchDialog({ chats, projects, avatars, commands = [], open, cl
         {selectedIndex === filteredCommands.length + index && <span className="search-result-enter" aria-hidden="true">↵</span>}
       </button>)}
       {!totalResults && <div className="search-empty" role="status">
-        <Search size={18} aria-hidden="true" />
+        <Search size={16} aria-hidden="true" />
         <span>{query ? "No chats or projects match that search." : "No chats yet."}</span>
       </div>}
     </div>

@@ -23,7 +23,7 @@ export function AttachmentList<T extends Attachment>({ files, remove, retry, dis
           {file.error && <span className="attachment-image-error" role="alert">{file.error}{retry && <IconButton label={`Retry ${file.name}`} disabled={disabled} onClick={() => retry(file)}><RotateCcw size={14} /></IconButton>}</span>}
         </div>;
         return <div className="attachment-chip" key={file.key || file.url}>
-        <File size={18} aria-hidden="true" />
+        <File size={16} aria-hidden="true" />
         <div className="attachment-info">
           <span className="truncate" title={file.name}>{file.name}</span>
           <span className="attachment-meta">{file.size < 1024 ? `${file.size} B` : file.size < 1048576 ? `${Math.ceil(file.size / 1024)} KB` : `${(file.size / 1048576).toFixed(1)} MB`}

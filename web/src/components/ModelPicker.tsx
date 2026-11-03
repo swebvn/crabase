@@ -15,7 +15,7 @@ export function ModelPicker({ models, chosen, reasoning, unavailable, selectMode
   const levels = reasoningLevels(chosen);
   return <Menu className="model-picker" contentRole="dialog" disabled={!models.length}
     label={`Model and reasoning: ${label}${reasoning ? `, ${reasoning}` : ''}`}
-    icon={<><span className="truncate">{label}</span>{reasoning && <span className="model-picker-effort">{reasoning}</span>}<ChevronDown size={13} /></>}>
+    icon={<><span className="truncate">{label}</span>{reasoning && <span className="model-picker-effort">{reasoning}</span>}<ChevronDown size={12} /></>}>
     <div className="model-picker-list" role="group" aria-label="Model">
       {models.map(model => <button key={model.model} aria-pressed={chosen?.model === model.model}
         onClick={() => selectModel(model.model)}><span>{model.displayName}</span>{chosen?.model === model.model && <Check size={14} />}</button>)}

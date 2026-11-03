@@ -92,21 +92,21 @@ export function WorkspacePanel({ active, codeAvailable, dock, open, seenTabs, te
         {visibleTabs.map(({ id, label, Icon }) => <span className={`workspace-tab-item ${active === id ? "active" : ""}`} key={id}>
           <button type="button" id={`workspace-tab-${id}`} className="workspace-tab" role="tab" aria-controls="workspace-content"
             tabIndex={active === id || (active === "start" && visibleTabs[0]?.id === id) ? 0 : -1}
-            aria-selected={active === id} onClick={() => onTab(id)}><Icon size={15} />{label}</button>
+            aria-selected={active === id} onClick={() => onTab(id)}><Icon size={14} />{label}</button>
           <IconButton className="workspace-tab-close" label={`Remove ${label} tab`} onClick={() => onRemoveTab(id)}><X size={12} /></IconButton>
         </span>)}
       </div>
-      <Menu label="Add workspace tab" icon={<Plus size={15} />} viewport>
+      <Menu label="Add workspace tab" icon={<Plus size={14} />} viewport>
         {availableTabs.map(([id, label]) => <MenuItem key={id} onClick={() => onSelectTab(id)}>{label}</MenuItem>)}
         <MenuItem onClick={onAddTerminal}>Terminal</MenuItem>
       </Menu>
       {dock === "right" && <IconButton label={focused ? "Exit workspace focus mode" : "Focus workspace"} aria-pressed={focused} onClick={() => setFocused((value) => !value)}>
-        {focused ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+        {focused ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
       </IconButton>}
       <IconButton label={`Dock workspace ${dock === "bottom" ? "right" : "bottom"}`} onClick={onDock}>
-        {dock === "bottom" ? <PanelRight size={15} /> : <PanelBottom size={15} />}
+        {dock === "bottom" ? <PanelRight size={14} /> : <PanelBottom size={14} />}
       </IconButton>
-      <IconButton label="Close workspace" onClick={onClose}><X size={17} /></IconButton>
+      <IconButton label="Close workspace" onClick={onClose}><X size={14} /></IconButton>
     </header>
     <div id="workspace-content" className="workspace-body" role={active === "start" ? undefined : "tabpanel"}
       aria-labelledby={active === "start" ? undefined : `workspace-tab-${active}`}>

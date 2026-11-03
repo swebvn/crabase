@@ -223,7 +223,7 @@ export function ChatPage({
           ))}
           {chat && chat.status !== "idle" && (
             <div className="working-indicator" role="status">
-              <Loader2 size={15} className="spin" />
+              <Loader2 size={14} className="spin" />
               {chat.status === "queued"
                 ? "Waiting for the agent…"
                 : chat.status === "approval"

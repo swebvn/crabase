@@ -29,13 +29,13 @@ export function HealthPage({ request }: { request: Request }) {
   return <section className="settings-section" aria-labelledby="settings-health-title">
     <header className="settings-section-header">
       <div><h2 id="settings-health-title">Health</h2><p>Workspace services and connection status.</p></div>
-      <Button loading={loading} onClick={() => setVersion(value => value + 1)}><RefreshCw size={15} className={loading ? "spin" : ""} aria-hidden="true" />{error ? "Retry" : "Refresh"}</Button>
+      <Button loading={loading} onClick={() => setVersion(value => value + 1)}><RefreshCw size={16} className={loading ? "spin" : ""} aria-hidden="true" />{error ? "Retry" : "Refresh"}</Button>
     </header>
     <ErrorNotice message={error} />
     {loading && !health && <p className="settings-empty" role="status">Checking health…</p>}
     {health && <>
       <div className="settings-health-summary" role="status">
-        {issues ? <TriangleAlert size={18} aria-hidden="true" /> : <CircleCheck size={18} aria-hidden="true" />}
+        {issues ? <TriangleAlert size={16} aria-hidden="true" /> : <CircleCheck size={16} aria-hidden="true" />}
         <span>{issues ? `${issues} ${issues === 1 ? "check needs" : "checks need"} attention` : "No issues reported"}</span>
       </div>
       <table className="settings-table settings-health" aria-label="Health checks" aria-busy={loading}>

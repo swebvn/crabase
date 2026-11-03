@@ -45,7 +45,7 @@ export function DetailsPanel({
                       <img src={file.url} alt="" loading="lazy" />
                     </a>
                   ) : (
-                    <File size={24} aria-hidden="true" />
+                    <File size={16} aria-hidden="true" />
                   )}
                   <a
                     href={`${file.url}?download=1`}
@@ -63,7 +63,7 @@ export function DetailsPanel({
                             : `${(file.size / 1048576).toFixed(1)} MB`}
                       </small>
                     </span>
-                    <Download size={16} aria-label="Download" />
+                    <Download size={14} aria-label="Download" />
                   </a>
                 </li>
               ))}

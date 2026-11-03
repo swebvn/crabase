@@ -24,7 +24,7 @@ export function ProjectSwitcher({ projects, chats, pins, current, loaded, select
   return <>
     <Button variant="text" className="project-switcher" aria-label={`Switch project: ${current?.name || "Standalone chats"}`} aria-haspopup="dialog" aria-expanded={open}
       onClick={() => { setQuery(""); setOpen(true); }}>
-      {current ? <Folder size={18} aria-hidden="true" /> : <MessageSquare size={18} aria-hidden="true" />}
+      {current ? <Folder size={16} aria-hidden="true" /> : <MessageSquare size={16} aria-hidden="true" />}
       <span className="truncate" title={current?.name || "Standalone chats"}>{current?.name || "Standalone"}</span>
       <ChevronsUpDown size={14} aria-hidden="true" />
     </Button>
@@ -35,7 +35,7 @@ export function ProjectSwitcher({ projects, chats, pins, current, loaded, select
           onKeyDown={event => { if (event.key === "Escape" && !event.nativeEvent.isComposing) { event.preventDefault(); setOpen(false); } }} />
       </div>
       <Button variant="text" className="project-switcher-option" aria-pressed={!current} onClick={() => choose("")}>
-        <MessageSquare size={18} aria-hidden="true" /><span>Standalone chats</span>{!current && <Check size={16} aria-hidden="true" />}
+        <MessageSquare size={16} aria-hidden="true" /><span>Standalone chats</span>{!current && <Check size={16} aria-hidden="true" />}
       </Button>
       <div className="project-switcher-toolbar">
         <label className="check-label"><Input type="checkbox" checked={showArchived} onChange={event => setShowArchived(event.target.checked)} />Show archived</label>
@@ -53,7 +53,7 @@ export function ProjectSwitcher({ projects, chats, pins, current, loaded, select
               {group.items.map(project => {
                 const busy = chats.some(chat => chat.status !== "idle" && (chat.project_id === project.id || projects.some(child => child.id === chat.project_id && child.parent_id === project.id)));
                 return <Button variant="text" className="project-switcher-option" key={project.id} aria-pressed={current?.id === project.id} onClick={() => choose(project.id)}>
-                  <Folder size={18} aria-hidden="true" />
+                  <Folder size={16} aria-hidden="true" />
                   <span className="project-switcher-copy"><strong>{project.name}{!!project.archived && " · Archived"}<PrivateLock project={project} /></strong><small className="truncate" title={project.path}>{project.path}</small></span>
                   {busy && <Loader2 size={14} className="spin" aria-label="Agent working" />}
                   {current?.id === project.id && <Check size={16} aria-hidden="true" />}

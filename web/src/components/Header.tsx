@@ -39,7 +39,7 @@ export function Header({
           label="Open sidebar"
           onClick={showSidebar}
         >
-          <PanelLeft size={18} />
+          <PanelLeft size={16} />
         </IconButton>
         {project && (
           <>
@@ -60,11 +60,11 @@ export function Header({
       </div>
       <div className="topbar-actions">
         <div className="mobile-header-menu">
-          <Menu label="Chat actions" disabled={!chat} icon={<MoreHorizontal size={18} />}>
+          <Menu label="Chat actions" disabled={!chat} icon={<MoreHorizontal size={16} />}>
             {chat && <MenuItem onClick={copy}><Copy size={16} />Copy chat link</MenuItem>}
-            {chat && <MenuItem onClick={toggleTerminal}><SquareTerminal size={17} />{terminalOpen ? "Hide terminal" : "Show terminal"}</MenuItem>}
-            {chat && project && <MenuItem onClick={toggleCode}><FileCode2 size={18} />{codeOpen ? "Hide code" : "Show code"}</MenuItem>}
-            {chat && <MenuItem onClick={toggleDetails}><PanelRight size={18} />{detailsOpen ? "Hide artifacts" : "Show artifacts"}</MenuItem>}
+            {chat && <MenuItem onClick={toggleTerminal}><SquareTerminal size={16} />{terminalOpen ? "Hide terminal" : "Show terminal"}</MenuItem>}
+            {chat && project && <MenuItem onClick={toggleCode}><FileCode2 size={16} />{codeOpen ? "Hide code" : "Show code"}</MenuItem>}
+            {chat && <MenuItem onClick={toggleDetails}><PanelRight size={16} />{detailsOpen ? "Hide artifacts" : "Show artifacts"}</MenuItem>}
           </Menu>
         </div>
         {chat && (
@@ -78,7 +78,7 @@ export function Header({
               aria-pressed={terminalOpen}
               onClick={toggleTerminal}
             >
-              <SquareTerminal size={17} />
+              <SquareTerminal size={16} />
             </IconButton>
           </>
         )}
@@ -88,7 +88,7 @@ export function Header({
           aria-pressed={codeOpen}
           onClick={toggleCode}
         >
-          <FileCode2 size={18} />
+          <FileCode2 size={16} />
         </IconButton>}
         <IconButton
           className={detailsOpen ? "active" : ""}
@@ -97,7 +97,7 @@ export function Header({
           aria-pressed={detailsOpen}
           onClick={toggleDetails}
         >
-          <PanelRight size={18} />
+          <PanelRight size={16} />
         </IconButton>
       </div>
     </header>

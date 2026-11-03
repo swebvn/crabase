@@ -65,8 +65,10 @@
 .settings-health-summary { display: flex; align-items: center; gap: var(--space-2); font-size: var(--type-label); }
 .settings-health-summary svg { flex-shrink: 0; color: var(--subtle); }
 .settings-update-card { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)) auto; align-items: center; gap: var(--space-3); padding: var(--space-3); border: 1px solid var(--line); border-radius: var(--radius-small); background: var(--surface); }
-.settings-update-card strong, .settings-update-card span { display: block; }
-.settings-update-card span { color: var(--subtle); font-size: var(--type-meta); }
+/* Only the release labels stack; the shared status badge keeps its own icon-and-text layout. */
+.settings-update-card > div:not(.settings-update-action) > :is(strong, span) { display: block; }
+.settings-update-card > div:not(.settings-update-action) > strong { font-size: var(--type-label); font-weight: var(--weight-medium); }
+.settings-update-card > div:not(.settings-update-action) > span { color: var(--subtle); font-size: var(--type-meta); }
 .settings-update-action { justify-self: end; }
 .settings-update-status { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-2); border-left: 3px solid var(--muted); background: var(--surface); }
 .settings-update-status span, .settings-update-status small { color: var(--subtle); font-size: var(--type-meta); overflow-wrap: anywhere; }
@@ -74,6 +76,14 @@
 .settings-status-failed { border-color: var(--danger); }
 .settings-update-release { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
 .settings-update-release small { display: block; color: var(--subtle); font-size: var(--type-meta); }
+.settings-update-release strong { font-size: var(--type-label); font-weight: var(--weight-medium); }
+.settings-update-release a { font-size: var(--type-label); }
+.settings-release-toggle > summary { display: inline-flex; align-items: center; gap: var(--space-1); color: var(--subtle); font-size: var(--type-label); cursor: pointer; list-style: none; }
+.settings-release-toggle > summary::-webkit-details-marker { display: none; }
+.settings-release-toggle > summary:hover { color: var(--text); }
+.settings-release-toggle > summary > svg { transition: transform var(--motion-panel) var(--ease-panel); }
+.settings-release-toggle[open] > summary > svg { transform: rotate(90deg); }
+.settings-release-toggle > .settings-release-notes { margin-top: var(--space-2); }
 .settings-release-notes { max-height: 260px; overflow: auto; padding: var(--space-2); white-space: pre-wrap; font: var(--type-meta) / 1.5 var(--font-mono); background: var(--surface); border: 1px solid var(--line); }
 .profile-avatar-upload { display: flex; flex-direction: column; gap: var(--space-2); padding-bottom: var(--space-3); border-bottom: 1px solid var(--line); }
 .profile-avatar-upload .attachment-list { margin: 0; }
@@ -85,7 +95,7 @@
 .profile-avatar-warning strong { font-weight: var(--weight-strong); }
 .account-form { display: flex; flex-direction: column; gap: var(--space-3); }
 .account-form label { margin: 0; }
-.account-form label > input { margin-top: var(--space-1); padding: var(--space-1) var(--space-2); }
+.account-form label > input { margin-top: var(--space-1); }
 .account-form .dialog-actions { margin-top: 0; }
 .account-form p, .login-form p { font-size: var(--type-meta); }
 .settings-fieldset { min-width: 0; padding: 0; margin: 0; border: 0; }
@@ -348,7 +358,7 @@ small {
 .nav-item,
 .chat-link {
   width: 100%;
-  min-height: 40px;
+  min-height: 32px;
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -362,7 +372,9 @@ small {
   flex: 1;
 }
 .nav-item kbd {
+  font-family: var(--font-sans);
   font-size: var(--type-meta);
+  letter-spacing: 0.02em;
   opacity: 0.8;
 }
 .nav-item:hover,
@@ -391,7 +403,7 @@ small {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 32px;
+  min-height: 28px;
   padding: var(--space-3) 0 var(--space-1) var(--space-2);
   color: var(--muted);
   font-size: var(--type-meta);
@@ -503,8 +515,18 @@ small {
   margin-left: auto;
   color: var(--muted);
 }
-.project-row .icon-button:hover:not(:disabled) {
-  background: transparent;
+/* Mini row actions: muted until hovered, with a hover tone that still shows on an already-hovered row. */
+.project-row .icon-button,
+.chat-menu > .icon-button,
+.section-actions .icon-button { color: var(--muted); }
+.project-row .icon-button:hover:not(:disabled),
+.project-row .icon-button[aria-expanded="true"],
+.chat-menu > .icon-button:hover,
+.chat-menu > .icon-button[aria-expanded="true"],
+.section-actions .icon-button:hover:not(:disabled),
+.section-actions .icon-button[aria-expanded="true"] {
+  background: color-mix(in srgb, var(--text) 9%, var(--hover));
+  color: var(--text);
 }
 .project-label {
   min-width: 0;
@@ -512,19 +534,20 @@ small {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  min-height: 40px;
+  min-height: 32px;
   padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-small);
+  color: var(--text);
   font-size: var(--type-label);
-  font-weight: var(--weight-regular);
+  font-weight: var(--weight-medium);
   text-align: left;
 }
+.project-label > svg:first-child { flex-shrink: 0; color: var(--muted); }
 .project-chats {
   display: grid;
-  padding-bottom: var(--space-2);
+  padding: 0 0 var(--space-2) var(--space-2);
 }
 .worktree-group { min-width: 0; }
-.sidebar:not(.project-focused) .worktree-group { margin-left: var(--space-2); }
 .chat-row {
   position: relative;
   min-width: 0;
@@ -541,34 +564,33 @@ small {
 }
 .chat-menu > .icon-button {
   width: 0;
-  height: 28px;
+  height: 24px;
   padding: 0;
   overflow: hidden;
   opacity: 0;
   pointer-events: none;
 }
 .chat-row.has-progress .chat-link {
-  padding-right: 28px;
+  padding-right: 26px;
 }
 .chat-row:hover .chat-link,
 .chat-row:has(:focus-visible) .chat-link {
-  padding-right: 40px;
+  padding-right: 32px;
 }
 .chat-row.has-progress:hover .chat-link,
 .chat-row.has-progress:has(:focus-visible) .chat-link {
-  padding-right: 64px;
+  padding-right: 52px;
 }
 .chat-row:hover .chat-menu > .icon-button,
 .chat-row:has(:focus-visible) .chat-menu > .icon-button,
 .chat-menu > .icon-button[aria-expanded="true"] {
-  width: 28px;
+  width: 24px;
   opacity: 1;
   pointer-events: auto;
 }
 .chat-trailing,
 .chat-progress,
-.chat-menu > .icon-button,
-.chat-menu > .icon-button:hover {
+.chat-menu > .icon-button {
   background: transparent;
 }
 .load-more {
@@ -586,6 +608,7 @@ small {
   flex: 1;
   overflow: hidden;
   white-space: nowrap;
+  mask-image: linear-gradient(to right, #000 calc(100% - 20px), transparent);
 }
 .chat-title-text {
   position: relative;
@@ -615,6 +638,7 @@ small {
 }
 .chat-progress {
   margin-left: auto;
+  color: var(--muted);
 }
 .profile-row {
   display: flex;
@@ -666,6 +690,9 @@ small {
 .avatar-stack > * + * {
   margin-left: -5px;
 }
+.chat-link .avatar-small,
+.chat-link .avatar-overflow { width: 18px; min-width: 18px; height: 18px; }
+.chat-link .avatar-stack > * + * { margin-left: -6px; }
 .avatar-overflow {
   min-width: 22px;
   height: 20px;
@@ -2040,6 +2067,15 @@ dialog::backdrop {
 .search-results button[aria-selected="true"] {
   background: var(--hover);
 }
+/* One fixed leading slot keeps every result title on the same edge: a command icon or up to two avatars. */
+.search-result-lead {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  width: 36px;
+  color: var(--muted);
+}
+.search-result-lead .avatar-stack > :nth-child(n+3) { display: none; }
 .search-result-copy {
   display: block;
   min-width: 0;
@@ -2359,25 +2395,31 @@ legend {
 }
 
 .artifact-list {
+  display: grid;
+  gap: 2px;
   list-style: none;
   padding: 0;
-  margin: var(--space-3) 0 0;
+  margin: var(--space-1) 0 0;
 }
 .artifact-list li {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-2) 0;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-small);
 }
+.artifact-list li:hover { background: var(--hover); }
 .artifact-list img {
-  width: 32px;
-  height: 32px;
+  width: 24px;
+  height: 24px;
   object-fit: cover;
   border-radius: var(--radius-small);
 }
 .artifact-list svg {
   flex-shrink: 0;
+  color: var(--muted);
 }
+.artifact-list li:hover .artifact-download > svg { color: var(--text); }
 .artifact-download {
   display: flex;
   align-items: center;
@@ -2400,8 +2442,10 @@ legend {
   font-weight: 500;
 }
 .artifact-download small {
+  display: block;
   color: var(--muted);
   font-size: var(--type-meta);
+  line-height: 1.3;
 }
 .artifact-download:hover strong {
   text-decoration: underline;
@@ -2458,7 +2502,8 @@ legend {
 }
 
 .agent-activity {
-  margin: var(--space-4) 0 var(--space-6);
+  margin: var(--space-3) 0 var(--space-4);
+  padding-top: var(--space-2);
   border-top: 1px solid var(--line);
   font-size: var(--type-label);
 }
@@ -2467,9 +2512,12 @@ legend {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-3);
+  padding: var(--space-2);
+  border-radius: var(--radius-small);
   cursor: pointer;
 }
+.agent-activity-heading:hover,
+.agent-task summary:hover { background: var(--hover); }
 .agent-activity-heading {
   flex-wrap: wrap;
   width: 100%;

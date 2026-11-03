@@ -20,7 +20,7 @@ export function SettingsPage({ theme, setTheme, request, projects, loaded, back 
   const currentPage = user.avatar_required ? "profile" : page;
   return <div className="settings-page">
     <header className="settings-header">
-      {!user.avatar_required && <IconButton label="Back to workspace" onClick={back}><ArrowLeft size={18} /></IconButton>}
+      {!user.avatar_required && <IconButton label="Back to workspace" onClick={back}><ArrowLeft size={16} /></IconButton>}
       <h1>Settings</h1>
       <Button variant="text" loading={signingOut} onClick={async () => {
         setSigningOut(true); setError("");
@@ -50,7 +50,7 @@ export function SettingsPage({ theme, setTheme, request, projects, loaded, back 
           <header className="settings-section-header"><div><h2 id="settings-appearance-title">Appearance</h2><p>Choose a theme for this device.</p></div></header>
           <div className="theme-options" role="group" aria-label="Color theme">
             {["light", "dark"].map(value => <Button key={value} aria-pressed={theme === value} onClick={() => setTheme(value)}>
-              {value === "light" ? <Sun size={18} aria-hidden="true" /> : <Moon size={18} aria-hidden="true" />}<span>{value === "light" ? "Light" : "Dark"}</span>
+              {value === "light" ? <Sun size={16} aria-hidden="true" /> : <Moon size={16} aria-hidden="true" />}<span>{value === "light" ? "Light" : "Dark"}</span>
               <Check size={16} aria-hidden="true" className={theme === value ? "" : "theme-check-hidden"} />
             </Button>)}
           </div>
@@ -73,7 +73,7 @@ function AvatarUpload({ request }: { request: Request }) {
   const [saved, setSaved] = useState(false);
   return <section className="profile-avatar-upload" aria-label="Profile photo">
     {user.avatar_required && <div className="profile-avatar-warning" role="alert">
-      <TriangleAlert size={18} aria-hidden="true" />
+      <TriangleAlert size={16} aria-hidden="true" />
       <div><strong>Profile photo required</strong><p>Upload and save a photo to enter the workspace.</p></div>
     </div>}
     <div className="profile-photo-row">

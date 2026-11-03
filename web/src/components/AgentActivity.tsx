@@ -55,7 +55,7 @@ export function AgentActivity({ body }: { body: string }) {
           {working ? `${working} working · ` : ""}
           {completed} of {agents.length} done
         </span>
-        <ChevronDown size={16} className={open ? "" : "collapsed"} />
+        <ChevronDown size={14} className={open ? "" : "collapsed"} />
       </button>
       <div className="agent-activity-list" hidden={!open}>
         {agents.map((agent, index) => {

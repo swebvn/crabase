@@ -220,13 +220,13 @@ export function ProjectWorkspacePanel({ project, request, theme, actions, fileSe
       <aside className="workspace-navigator" aria-label={navigator === "files" ? "Project files" : "Git changes"}>
         <nav className="workspace-view-switch" aria-label="Code navigator">
           <IconButton label="Files" aria-pressed={navigator === "files"} onClick={() => setNavigator("files")}>
-            <FilesIcon size={15} />
+            <FilesIcon size={14} />
           </IconButton>
           <IconButton label={`Changes (${workspace?.changes.length || 0})`} aria-pressed={navigator === "changes"} onClick={() => setNavigator("changes")}>
-            <GitCompareArrows size={15} />
+            <GitCompareArrows size={14} />
           </IconButton>
           <IconButton label="Refresh project" onClick={refresh} disabled={loading}>
-            <RefreshCw size={15} className={loading ? "spin" : ""} />
+            <RefreshCw size={14} className={loading ? "spin" : ""} />
           </IconButton>
           {actions}
         </nav>
@@ -349,13 +349,13 @@ function FileTabs({ files, active, diff, surface, select, close, saving, selectD
         <span className="truncate">{file.path.split("/").pop()}</span>
         {file.draft !== file.contents && <span className="workspace-unsaved" role="img" aria-label="Unsaved changes" />}
       </button>
-      <IconButton label={`Close ${file.path}`} onClick={() => close(file)} disabled={saving.has(file.path)}><X size={13} /></IconButton>
+      <IconButton label={`Close ${file.path}`} onClick={() => close(file)} disabled={saving.has(file.path)}><X size={12} /></IconButton>
     </div>)}
     {diff && <div className="workspace-editor-tab diff" data-active={surface === "diff"}>
       <button onClick={selectDiff} title={`Review ${diff.path}`}>
-        <GitCompareArrows size={13} /><span className="truncate">{diff.path.split("/").pop()}</span>
+        <GitCompareArrows size={14} /><span className="truncate">{diff.path.split("/").pop()}</span>
       </button>
-      <IconButton label={`Close review of ${diff.path}`} onClick={closeDiff}><X size={13} /></IconButton>
+      <IconButton label={`Close review of ${diff.path}`} onClick={closeDiff}><X size={12} /></IconButton>
     </div>}
   </nav>;
 }

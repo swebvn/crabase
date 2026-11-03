@@ -161,7 +161,9 @@ Use 6–8px radii for rows and controls, 16–20px for the composer and dialogs,
 Every interactive component needs a deliberate default, hover, focus, disabled, loading, and failure treatment where applicable. Loading must not look like an empty successful result.
 
 - Use native buttons, selects, dialogs, and disclosure elements before custom behavior.
-- Icon-only actions need accessible names and useful tooltips. Use one Lucide icon family at consistent sizes.
+- Icon-only actions need accessible names and useful tooltips. Use one Lucide icon family at consistent sizes: 16px icons in 32px buttons (navigation, row leading icons), 14px icons in 24px buttons (mini row actions such as menus, plus, open, download; panel tab-strip actions), 14px status spinners and 12px locks, chevrons and tab-close icons.
+- Single-line fields and selects use `--control-height` (36px, like buttons) with one shared padding; do not override field padding per page. Search and picker results use one fixed leading slot (a 16px icon or up to two avatars) so every title starts on the same edge.
+- Mini row actions are muted until hovered and use a slightly stronger hover tone than the row so feedback stays visible on an already-hovered row. Spinners use the muted color. Sidebar rows are 32px on fine pointers and 44px on touch; long chat titles fade at the edge (the hover marquee still reveals them).
 - Provide visible keyboard focus, including text inputs. Return focus to the opener after a dialog closes.
 - Meet WCAG AA contrast. Avoid tiny gray text as a density solution. Color alone must not carry state.
 - Maintain at least 24px pointer targets with adequate separation; prefer 44px touch targets on mobile.

@@ -185,7 +185,7 @@ export function MenuItem({
       }}
     >
       <span>{children}</span>
-      {selected && <Check size={15} />}
+      {selected && <Check size={14} />}
     </ButtonControl>
   );
 }
@@ -232,7 +232,7 @@ export function Dialog({
         {minimal ? <h2 id={id} className="sr-only">{title}</h2> : <header className="dialog-heading">
           <h2 id={id}>{title}</h2>
           <IconButton label="Close dialog" onClick={close} disabled={!dismissible}>
-            <X size={18} />
+            <X size={16} />
           </IconButton>
         </header>}
         {children}

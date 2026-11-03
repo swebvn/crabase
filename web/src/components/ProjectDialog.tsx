@@ -180,7 +180,7 @@ export function ProjectDialog({
                 disabled={busy}
                 onClick={() => setSelected(folder.path)}
               >
-                <Folder size={18} />
+                <Folder size={16} />
                 <span className="truncate" title={folder.name}>
                   {folder.name}
                 </span>

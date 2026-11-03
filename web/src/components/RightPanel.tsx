@@ -43,7 +43,7 @@ export function RightPanel({
       aria-pressed={focused} onClick={() => setFocused((value) => !value)}>
       {focused ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
     </IconButton>}
-    <IconButton label={`Close ${label.toLowerCase()}`} onClick={close}><X size={17} /></IconButton>
+    <IconButton label={`Close ${label.toLowerCase()}`} onClick={close}><X size={16} /></IconButton>
   </div>;
 
   const content = typeof children === "function" ? children(embedded ? null : actions) : <>

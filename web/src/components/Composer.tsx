@@ -239,7 +239,7 @@ export function Composer({
       {!chat && project && (
         <div className="composer-project-bar">
           <span>
-            <Folder size={15} />
+            <Folder size={14} />
             {project.name}
           </span>
         </div>
@@ -359,7 +359,7 @@ export function Composer({
           <div className="composer-controls">
             <div className="model-controls">
               <Input ref={picker} type="file" multiple hidden onChange={event => { attachments.add(Array.from(event.target.files || [])); event.target.value = ''; }} />
-              <IconButton label="Attach files" disabled={busy || !live || attachments.files.length >= 10} onClick={() => picker.current?.click()}><Paperclip size={17} /></IconButton>
+              <IconButton label="Attach files" disabled={busy || !live || attachments.files.length >= 10} onClick={() => picker.current?.click()}><Paperclip size={16} /></IconButton>
               <ModelPicker models={data.models} chosen={chosen} reasoning={reasoning}
                 unavailable={modelsUnavailable}
                 selectModel={model => { setModel(model); setEffort(''); saveSelection(model, null); }}
@@ -394,7 +394,7 @@ export function Composer({
                 disabled={disabled}
                 onClick={() => submit("note")}
               >
-                <StickyNote size={18} />
+                <StickyNote size={16} />
               </IconButton>
               {chat && chat.status !== "idle" ? (
                 <IconButton
@@ -413,9 +413,9 @@ export function Composer({
                   onClick={() => submit("agent")}
                 >
                   {busy ? (
-                    <Loader2 size={18} className="spin" />
+                    <Loader2 size={16} className="spin" />
                   ) : (
-                    <ArrowUp size={19} />
+                    <ArrowUp size={16} />
                   )}
                 </IconButton>
               )}
