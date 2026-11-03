@@ -113,7 +113,7 @@ php server/bin/create-admin.php     # prompts for the first admin's name, email 
 exit
 ```
 
-Replace `crabase.example.com` with your domain. `APP_URL` must be the exact browser origin: Crabase accepts that host and origin, and makes session cookies `Secure` when it is `https://`. `CRABASE_WORKSPACE_ROOT` is where projects, scratch chats, artifacts and worktrees live; keep it narrow. `CODEX_BIN` points at the Codex install from step 3. Optional settings: `CRABASE_PARALLEL_CHATS` (default 12), and `NODE_BIN` (absolute path) if Node is not in `/usr/bin` or `/usr/local/bin`, for example when it comes from nvm. Stay on a release tag rather than `main`; the in-app updater only upgrades release checkouts.
+Replace `crabase.example.com` with your domain. `APP_URL` must be the exact browser origin: Crabase accepts that host and origin, and makes session cookies `Secure` when it is `https://`. `CRABASE_WORKSPACE_ROOT` is where projects, scratch chats, artifacts and worktrees live; keep it narrow. `CODEX_BIN` points at the Codex install from step 3. Optional settings: `CRABASE_PARALLEL_CHATS` (default 12); `CRABASE_HTTP_PORT` / `CRABASE_WS_PORT` (default 8787/8788) when another app on the server already uses those ports, matching the two ports in the Caddyfile of step 5; and `NODE_BIN` (absolute path) if Node is not in `/usr/bin` or `/usr/local/bin`, for example when it comes from nvm. Stay on a release tag rather than `main`; the in-app updater only upgrades release checkouts.
 
 Agent commits are authored by the `crab` Git identity above; each member's Profile Git name/email is added as a `Co-authored-by` trailer. For agents to clone or push private repositories, give `crab` its own credentials (for example `ssh-keygen -t ed25519` as `crab`, then add `~/.ssh/id_ed25519.pub` as a deploy key or to a bot account).
 
@@ -189,6 +189,8 @@ curl -si https://crabase.example.com/auth/session | head -1     # expect HTTP/2 
 ```
 
 If SSH listens on a port other than 22, run `sudo ufw allow <port>/tcp` **before** enabling ufw, or you will lock yourself out. If your VPS provider has its own firewall, allow 80 and 443 there too.
+
+If you changed `CRABASE_HTTP_PORT` / `CRABASE_WS_PORT`, use those ports in the two `reverse_proxy` lines. If the server already runs Caddy for other sites, append this block to the existing Caddyfile instead of replacing it, check it with `sudo caddy validate --config /etc/caddy/Caddyfile`, and only then reload.
 
 Caddy obtains and renews the certificate, forwards the WebSocket upgrade on `/ws`, and passes the browser address in `X-Forwarded-For`; Crabase trusts that header only from loopback, so login rate limits apply per user. Never open ports 8787 or 8788 in the firewall. Open `https://crabase.example.com` and sign in with the admin from step 2.
 

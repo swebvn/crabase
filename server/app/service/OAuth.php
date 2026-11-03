@@ -16,7 +16,7 @@ final class OAuth
     private static function publicUrl(): string
     {
         require dirname(__DIR__,2).'/config/crabase.php';
-        return rtrim(getenv('APP_URL') ?: 'http://127.0.0.1:8787', '/');
+        return rtrim(getenv('APP_URL') ?: 'http://127.0.0.1:'.(require dirname(__DIR__, 2).'/config/crabase.php')['http_port'], '/');
     }
 
     public static function configured(): bool

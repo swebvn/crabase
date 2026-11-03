@@ -26,12 +26,13 @@ final class CodexServer implements WorkerProvider
     {
         $servers = $container->get(Servers::class);
         $host = (string) config('crabase.bind_host', '127.0.0.1');
-        $servers->add('codex', function () use ($host): array {
+        $port = (int) config('crabase.ws_port', 8788);
+        $servers->add('codex', function () use ($host, $port): array {
             return [new Workers(
                 'codex',
                 workers: 1,
-                setup: function (Crab $group) use ($host): void {
-                    $group->listen('tcp://'.$host.':8788', new WebSocketServer(
+                setup: function (Crab $group) use ($host, $port): void {
+                    $group->listen('tcp://'.$host.':'.$port, new WebSocketServer(
                         function (WebSocketSession $session, string $message, MessageType $type): void { $this->message($session, $message, $type); },
                         function (WebSocketSession $session, Request $request): void { $this->open($session, $request); },
                         function (WebSocketSession $session, int $code, string $reason): void { $this->close($session); },
@@ -40,7 +41,7 @@ final class CodexServer implements WorkerProvider
                     ));
                 },
             )];
-        }, runs: 'Codex WebSocket on :8788', grace: 30.0, reloads: false);
+        }, runs: 'Codex WebSocket on :'.$port, grace: 30.0, reloads: false);
     }
 
     public function start(\Crab\Engine\Process\Worker $worker, Container $container): void

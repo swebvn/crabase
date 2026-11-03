@@ -31,6 +31,10 @@ final class Auth
         if (!is_array($parts) || !in_array($parts['scheme'] ?? '', ['http', 'https'], true) || !isset($parts['host'])) return null;
         return strtolower($parts['scheme'].'://'.$parts['host']).(isset($parts['port']) ? ':'.$parts['port'] : '');
     }
+    private static function httpPort(): int
+    {
+        return (int) (require dirname(__DIR__, 2).'/config/crabase.php')['http_port'];
+    }
     /** Session cookies are Secure whenever the public origin is HTTPS. */
     public static function secureCookies(): bool
     {
@@ -40,7 +44,9 @@ final class Auth
     {
         if (getenv('CRABASE_ALLOW_ALL_ORIGINS') === '1') return true;
         if (is_string($origin) && ($app = self::appOrigin()) !== null && strtolower($origin) === $app) return true;
-        if (!is_string($origin) || !preg_match('~^https?://([^/:]+)(?::(5173|8787))?$~D', $origin, $match)) return false;
+        if (!is_string($origin) || !preg_match('~^https?://([^/:]+)(?::([0-9]+))?$~D', $origin, $match)) return false;
+        // Direct origins may use the Vite dev port or Crabase's own HTTP port.
+        if (isset($match[2]) && !in_array((int)$match[2], [5173, self::httpPort()], true)) return false;
         return self::networkHost($match[1]);
     }
     public static function allowedHost(string $host): bool

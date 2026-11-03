@@ -26,6 +26,15 @@ try {
     putenv('APP_URL=http://127.0.0.1:8787');
     authCheck(!A::secureCookies() && A::allowedOrigin('http://127.0.0.1:5173') && A::allowedOrigin('http://127.0.0.1:8787'));
     putenv('APP_URL');
+    // Custom loopback ports move the accepted direct origin with them; invalid or equal ports refuse to load.
+    putenv('CRABASE_HTTP_PORT=8791');
+    authCheck(A::allowedOrigin('http://127.0.0.1:8791') && A::allowedOrigin('http://127.0.0.1:5173') && !A::allowedOrigin('http://127.0.0.1:8787'));
+    foreach (['80', 'abc', '8788'] as $bad) {
+        putenv('CRABASE_HTTP_PORT='.$bad);
+        try { require dirname(__DIR__).'/config/crabase.php'; authCheck(false); } catch (RuntimeException) {}
+    }
+    putenv('CRABASE_HTTP_PORT');
+    authCheck(A::allowedOrigin('http://127.0.0.1:8787'));
     $process = proc_open([PHP_BINARY, dirname(__DIR__).'/cua','migrate'], [0=>['file','/dev/null','r'],1=>['file','/dev/null','w'],2=>STDERR], $pipes);
     authCheck(proc_close($process) === 0);
     $id = A::create(['name'=>'Admin','email'=>'admin@example.com','password'=>'test-password'],true)['id'];
