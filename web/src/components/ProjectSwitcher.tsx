@@ -4,8 +4,8 @@ import type { Chat, Project } from "../types";
 import { sortProjects, type ProjectSort } from "../lib/projects";
 import { Button, Dialog, Input, Menu, MenuItem, MenuLabel } from "./ui";
 
-export function ProjectSwitcher({ projects, chats, pins, current, loaded, admin, select, add, sort, setSort, showArchived, setShowArchived }: {
-  projects: Project[]; chats: Chat[]; pins: string[]; current?: Project; loaded: boolean; admin: boolean;
+export function ProjectSwitcher({ projects, chats, pins, current, loaded, select, add, sort, setSort, showArchived, setShowArchived }: {
+  projects: Project[]; chats: Chat[]; pins: string[]; current?: Project; loaded: boolean;
   select: (id: string) => void; add: () => void;
   sort: ProjectSort; setSort: (sort: ProjectSort) => void;
   showArchived: boolean; setShowArchived: Dispatch<SetStateAction<boolean>>;
@@ -63,7 +63,7 @@ export function ProjectSwitcher({ projects, chats, pins, current, loaded, admin,
           {!visible.length && <p className="muted" role="status">{query.trim() ? "No matching projects." : "No projects yet."}</p>}
         </>}
       </div>
-      {admin && <div className="project-switcher-footer"><Button onClick={() => { setOpen(false); add(); }}><Plus size={16} aria-hidden="true" />Add project</Button></div>}
+      <div className="project-switcher-footer"><Button onClick={() => { setOpen(false); add(); }}><Plus size={16} aria-hidden="true" />Add project</Button></div>
     </Dialog>}
   </>;
 }

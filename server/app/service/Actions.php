@@ -76,15 +76,25 @@ final class Actions
     }
 
 
-    public static function createProject(array $data): array
+    /** Private by default: a non-admin creator becomes the project's first member. */
+    public static function createProject(array $data, ?array $actor = null): array
     {
         $path = WorkspaceFolders::resolve($data['path'] ?? null);
         $name = basename($path);
         $db = Store::connection();
         $existing = $db->table('projects')->where('path', $path)->first();
-        if ($existing) return ['id'=>$existing['id']];
+        if ($existing) {
+            // Never reveal or grant access to someone else's private project through its folder path.
+            if ($actor && !$actor['admin'] && !in_array($existing['id'], ProjectAccess::ids($actor), true)) {
+                throw new InvalidArgumentException('This folder is already a project. Ask an administrator for access.');
+            }
+            return ['id'=>$existing['id']];
+        }
         $id = bin2hex(random_bytes(8));
-        $db->table('projects')->insert(['id' => $id, 'name' => $name, 'path' => $path]);
+        Store::transaction(function () use ($id, $name, $path, $actor): void {
+            Store::connection()->table('projects')->insert(['id' => $id, 'name' => $name, 'path' => $path]);
+            if ($actor && !$actor['admin']) Store::connection()->table('project_members')->insert(['project_id' => $id, 'user_id' => $actor['id']]);
+        });
         Store::event(null, "Added project $name");
         return ['id' => $id];
     }

@@ -142,9 +142,17 @@ if __name__=='__main__':
     assert health['checked_at'] and len(health['checks']) >= 6
     assert {'WebSocket worker','Codex app-server','Database','Agent queue','Terminal host','Runtime storage','Workspace storage'} <= {check['name'] for check in health['checks']}
     assert all(check['status'] in {'ok','warning','error','idle'} and check['detail'] for check in health['checks'])
-    second.call('projectFolders',error=True)
+    # Any signed-in user can browse folders and add projects; the creator becomes the private project's member.
+    assert 'folders' in second.call('projectFolders')
     second.call('worktreeCreate',{'project_id':'invalid','branch':'feature/test'},error=True)
-    second.call('project',{'path':'/'},error=True)
+    with tempfile.TemporaryDirectory(prefix='crabase-member-') as created_path:
+        created=second.call('project',{'path':created_path})['id']
+        assert created in [p['id'] for p in second.call('sync')['state']['projects']]
+        assert first.call('projectSharing',{'project_id':created}) == {'visibility':'private','members':[accounts[1]['id']]}
+        assert second.call('project',{'path':created_path})['id'] == created
+        second.call('projectArchive',{'project_id':created,'archived':True},error=True)
+        second.call('projectDelete',{'project_id':created},error=True)
+        first.call('projectDelete',{'project_id':created})
     # Disposable project: verify management permissions and deletion pushes to an open subscriber.
     with tempfile.TemporaryDirectory(prefix='crabase-delete-') as temp:
         project_id=uuid.uuid4().hex[:16]
@@ -155,6 +163,8 @@ if __name__=='__main__':
         assert first.call('projectSharing',{'project_id':project_id}) == {'visibility':'private','members':[]}
         hidden=second.call('sync')['state']
         assert project_id not in [p['id'] for p in hidden['projects']]
+        # Adding the folder of someone else's private project must not reveal or grant it.
+        assert 'already a project' in second.call('project',{'path':temp},error=True)
         assert owned not in [c['id'] for c in hidden['chats']]
         second.call('sync',{'chat_id':owned},error=True)
         for action in ['projectWorkspace','projectFile','projectSave','projectDiff','projectContext','create','projectPin']:

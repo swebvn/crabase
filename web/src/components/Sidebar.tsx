@@ -183,7 +183,7 @@ export function Sidebar({
   const projectMenu = (project: Project) => <Menu viewport label={`Project options for ${project.name}`} icon={<MoreHorizontal size={16} />}>
     {!focused && !project.parent_id && <MenuItem onClick={() => switchProject(project.id)}>Open project view</MenuItem>}
     {!project.parent_id && <MenuItem onClick={() => pinProject(project)}>{pins.includes(project.id) ? "Unpin" : "Pin"}</MenuItem>}
-    {admin && !project.parent_id && !project.archived && <MenuItem onClick={() => createWorktree(project)}>Create worktree</MenuItem>}
+    {!project.parent_id && !project.archived && <MenuItem onClick={() => createWorktree(project)}>Create worktree</MenuItem>}
     {focused && !project.parent_id && <MenuItem selected={showArchived} onClick={() => setShowArchived(value => !value)}>Show archived worktrees</MenuItem>}
     {admin && <><MenuItem onClick={() => manageProject(project, "projectArchive")}>{project.archived ? "Restore" : "Archive"}</MenuItem>
       <MenuItem onClick={() => manageProject(project, "projectDelete")}>Delete</MenuItem></>}
@@ -268,8 +268,7 @@ export function Sidebar({
         style={{ "--sidebar-width": `${width}px` } as CSSProperties}
       >
         <div className="sidebar-heading">
-          {focused ? <ProjectSwitcher projects={projects} chats={chats} pins={pins} current={currentProject} loaded={loaded} admin={admin}
-            sort={projectSort} setSort={setProjectSort} showArchived={showArchived} setShowArchived={setShowArchived}
+          {focused ? <ProjectSwitcher projects={projects} chats={chats} pins={pins} current={currentProject} loaded={loaded} sort={projectSort} setSort={setProjectSort} showArchived={showArchived} setShowArchived={setShowArchived}
             select={switchProject} add={() => showDialog("project")} /> : <Button variant="text" className="brand" onClick={() => newChat("")}><Crab size={26} /><span>Crabase</span></Button>}
           <IconButton label="Close sidebar" onClick={close}>
             <PanelLeft size={17} />
@@ -334,12 +333,12 @@ export function Sidebar({
                   Show archived projects
                 </MenuItem>
               </Menu>
-              {admin && <IconButton
+              <IconButton
                 label="Add project"
                 onClick={() => showDialog("project")}
               >
                 <Plus size={15} />
-              </IconButton>}
+              </IconButton>
             </div>
           </div>
           {projectsOpen && (

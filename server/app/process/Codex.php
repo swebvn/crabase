@@ -231,7 +231,10 @@ final class Codex
                 $result = match ($m['action']) {
                     'profile' => ['user'=>$actor],
                     'projectSharing', 'projectSharingSave' => ProjectAccess::sharing($actor, $m['data'], $m['action'] === 'projectSharingSave'),
-                    'project', 'projectFolders', 'projectFolderCreate', 'projectArchive', 'projectDelete', 'worktreeCreate' => $actor['admin']
+                    // Any signed-in user may add projects and worktrees (project_id access is checked above); archive/delete stay admin-only.
+                    'project' => \app\service\Actions::createProject($m['data'], $actor),
+                    'projectFolders', 'projectFolderCreate', 'worktreeCreate' => \app\service\Actions::handle($m['action'], $m['data']),
+                    'projectArchive', 'projectDelete' => $actor['admin']
                         ? \app\service\Actions::handle($m['action'], $m['data'])
                         : throw new \InvalidArgumentException('Administrator access required to manage projects.'),
                     'profileSave' => Auth::update($actor, $m['data'], false),

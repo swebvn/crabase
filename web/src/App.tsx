@@ -151,7 +151,7 @@ export function App() {
   };
   const commands: Command[] = [
     { id: "new-chat", label: "New chat", shortcut: "⌘⇧O", run: () => newChat() },
-    ...user.admin ? [{ id: "new-project", label: "Open project", keywords: ["project"], run: () => setDialog("project") }] : [],
+    { id: "new-project", label: "Open project", keywords: ["project"], run: () => setDialog("project") },
     ...selected ? [{ id: "terminal", label: "Open terminal", keywords: ["shell"], run: () => void openTerminal() }] : [],
     ...selected && project ? [{ id: "code", label: "Open code editor", keywords: ["editor"], run: () => selectWorkspace("code") }] : [],
     { id: "settings", label: "Open settings", run: () => navigate('/settings') },
@@ -525,7 +525,7 @@ export function App() {
           />
         </Suspense>
       )}
-      {dialog === "project" && !!user.admin && (
+      {dialog === "project" && (
         <Suspense fallback={<p role="status" className="loading-state">Loading projects…</p>}>
           <ProjectDialog
             request={request}
@@ -538,7 +538,7 @@ export function App() {
           />
         </Suspense>
       )}
-      {worktreeProject && !!user.admin && <Suspense fallback={<p role="status" className="loading-state">Loading worktree…</p>}><WorktreeDialog project={worktreeProject} request={request}
+      {worktreeProject && <Suspense fallback={<p role="status" className="loading-state">Loading worktree…</p>}><WorktreeDialog project={worktreeProject} request={request}
         close={() => setWorktreeProject(null)} added={(id) => { setWorktreeProject(null); newChat(id); setToast('Worktree created'); }} /></Suspense>}
     </div>
   );
