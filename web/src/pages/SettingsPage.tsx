@@ -166,6 +166,8 @@ function AccountForm({ account, admin = false, save, cancel }: {
 
 function UserManagement({ request }: { request: Request }) {
   const [users, setUsers] = useState<Account[]>([]);
+  const [oauth, setOauth] = useState<{ configured: boolean; existing_only: boolean }>();
+  const [savingOauth, setSavingOauth] = useState(false);
   const [editing, setEditing] = useState<Account | "new" | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -174,8 +176,8 @@ function UserManagement({ request }: { request: Request }) {
   useEffect(() => {
     let stale = false;
     setLoading(true); setError("");
-    request<{ users: Account[] }>("usersList")
-      .then(result => { if (!stale) setUsers(result.users); })
+    request<{ users: Account[]; oauth?: { configured: boolean; existing_only: boolean } }>("usersList")
+      .then(result => { if (!stale) { setUsers(result.users); setOauth(result.oauth); } })
       .catch(error => { if (!stale) setError(error.message); })
       .finally(() => { if (!stale) setLoading(false); });
     return () => { stale = true; };
@@ -185,6 +187,12 @@ function UserManagement({ request }: { request: Request }) {
       await request(editing === "new" ? "userCreate" : "userUpdate", data);
       setEditing(null); setVersion(value => value + 1);
     }} />;
+  async function toggleExistingOnly(existingOnly: boolean) {
+    setSavingOauth(true); setError("");
+    try { setOauth(await request<{ configured: boolean; existing_only: boolean }>("oauthSettingsSave", { existing_only: existingOnly })); }
+    catch (error) { setError((error as Error).message); }
+    finally { setSavingOauth(false); }
+  }
   const visible = users.filter(user => `${user.name} ${user.email}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
   return <section className="settings-section" aria-labelledby="settings-users-title">
     <header className="settings-section-header"><div><h2 id="settings-users-title">Users</h2><p>Manage accounts and workspace access.</p></div><Button variant="primary" onClick={() => setEditing("new")}><Plus size={16} aria-hidden="true" />Add user</Button></header>
@@ -192,6 +200,10 @@ function UserManagement({ request }: { request: Request }) {
       <div className="settings-search"><Search size={16} aria-hidden="true" /><Input type="search" aria-label="Search users" placeholder="Search by name or email…" value={query} onChange={event => setQuery(event.target.value)} /></div>
       {!loading && !error && <span className="settings-hint" role="status">{query.trim() ? `${visible.length} of ${users.length}` : users.length} {users.length === 1 ? "user" : "users"}</span>}
     </div>
+    {oauth?.configured && <fieldset className="settings-fieldset" disabled={savingOauth}>
+      <label className="check-label"><Input type="checkbox" checked={oauth.existing_only} onChange={event => void toggleExistingOnly(event.target.checked)} />
+        <span>Only existing users can sign in with TDA<small>TDA sign-in links to accounts you add here. When off, it also creates a member account for anyone new.</small></span></label>
+    </fieldset>}
     <ErrorNotice message={error} />
     {error && <Button className="settings-retry" onClick={() => setVersion(value => value + 1)}>Retry</Button>}
     {loading ? <p className="settings-empty" role="status">Loading users…</p> : <>

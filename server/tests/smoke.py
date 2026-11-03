@@ -137,6 +137,12 @@ if __name__=='__main__':
         if 'rejected' in locals():rejected.close()
     first,second=Client(cookie=cookies[0]),Client(cookie=cookies[1])
     second.call('usersList',error=True)
+    second.call('oauthSettingsSave',{'existing_only':True},error=True)
+    oauth=first.call('usersList')['oauth']
+    assert set(oauth)=={'configured','existing_only'} and isinstance(oauth['existing_only'],bool)
+    first.call('oauthSettingsSave',{'existing_only':'yes'},error=True)
+    assert first.call('oauthSettingsSave',{'existing_only':not oauth['existing_only']})['existing_only'] is (not oauth['existing_only'])
+    assert first.call('oauthSettingsSave',{'existing_only':oauth['existing_only']})['existing_only'] is oauth['existing_only']
     second.call('health',error=True)
     health=first.call('health')
     assert health['checked_at'] and len(health['checks']) >= 6

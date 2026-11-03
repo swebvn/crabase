@@ -238,7 +238,8 @@ final class Codex
                         ? \app\service\Actions::handle($m['action'], $m['data'])
                         : throw new \InvalidArgumentException('Administrator access required to manage projects.'),
                     'profileSave' => Auth::update($actor, $m['data'], false),
-                    'usersList' => ['users'=>Auth::users($actor)],
+                    'usersList' => ['users'=>Auth::users($actor)] + ($actor['admin'] ? ['oauth'=>\app\service\OAuth::settings()] : []),
+                    'oauthSettingsSave' => $actor['admin'] ? \app\service\OAuth::saveSettings($m['data']) : throw new \InvalidArgumentException('Administrator access required.'),
                     'health' => $actor['admin'] ? $this->health() : throw new \InvalidArgumentException('Administrator access required.'),
                     'updateStart' => $actor['admin'] ? Updater::start([
                         'active_jobs' => Store::connection()->table('jobs')->whereIn('status', ['queued', 'running'])->count(),

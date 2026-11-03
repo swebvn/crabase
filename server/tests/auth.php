@@ -104,6 +104,17 @@ try {
     authCheck(app\service\OAuth::account(['id'=>'provider-1','email'=>'admin@example.com','email_verified_at'=>'2026-09-09T00:00:00Z']) === $id);
     authCheck(app\service\OAuth::account(['id'=>'provider-1','email'=>'changed@example.com']) === $id);
     denied(fn () => app\service\OAuth::account(['id'=>'provider-2','email'=>'admin@example.com','email_verified'=>true]));
+    // Existing-only mode (off by default): unknown TDA users are refused, admin-added accounts still link.
+    authCheck(app\service\OAuth::settings()['existing_only'] === false);
+    denied(fn () => app\service\OAuth::saveSettings(['existing_only'=>'yes']));
+    authCheck(app\service\OAuth::saveSettings(['existing_only'=>true])['existing_only'] === true);
+    $accounts = S::connection()->table('accounts')->count();
+    denied(fn () => app\service\OAuth::account(['id'=>'stranger-subject','email'=>'stranger@example.com','name'=>'Stranger']));
+    authCheck(S::connection()->table('accounts')->count() === $accounts && !S::connection()->table('accounts')->where('email', 'stranger@example.com')->exists());
+    $invited = A::create(['name'=>'Invited','email'=>'invited@example.com','password'=>'invited-password'])['id'];
+    authCheck(app\service\OAuth::account(['id'=>'invited-subject','email'=>'Invited@Example.com']) === $invited);
+    authCheck(app\service\OAuth::account(['id'=>'invited-subject','email'=>'changed@example.com']) === $invited);
+    app\service\OAuth::saveSettings(['existing_only'=>false]);
     for ($i=0;$i<10;$i++) denied(fn () => A::login(['email'=>'none@example.com','password'=>'wrong'],'limited'));
     denied(fn () => A::login(['email'=>'admin@example.com','password'=>'test-password'],'limited'));
     authCheck(!array_key_exists('password_hash', A::users($admin)[0]));

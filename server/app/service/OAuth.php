@@ -19,6 +19,26 @@ final class OAuth
         return rtrim(getenv('APP_URL') ?: 'http://127.0.0.1:'.(require dirname(__DIR__, 2).'/config/crabase.php')['http_port'], '/');
     }
 
+    private const EXISTING_ONLY = 'oauth_existing_only';
+
+    /** When on, TDA sign-in only links to existing accounts and never creates new ones. Off by default. */
+    public static function existingOnly(): bool
+    {
+        return Store::connection()->table('settings')->where('key', self::EXISTING_ONLY)->value('value') === '1';
+    }
+
+    public static function saveSettings(array $data): array
+    {
+        if (!is_bool($data['existing_only'] ?? null)) throw new InvalidArgumentException('existing_only must be a boolean.');
+        Store::connection()->table('settings')->upsert([['key' => self::EXISTING_ONLY, 'value' => $data['existing_only'] ? '1' : '0']], ['key'], ['value']);
+        return self::settings();
+    }
+
+    public static function settings(): array
+    {
+        return ['configured' => self::configured(), 'existing_only' => self::existingOnly()];
+    }
+
     public static function configured(): bool
     {
         require dirname(__DIR__,2).'/config/crabase.php';
@@ -89,6 +109,7 @@ final class OAuth
             $db = Store::connection();
             $account = $db->table('accounts')->where('email', strtolower(trim($email)))->select('user_id','enabled')->first();
             if ($account && !$account['enabled']) throw new InvalidArgumentException('Your account is disabled. Contact your administrator.');
+            if (!$account && self::existingOnly()) throw new InvalidArgumentException('TDA sign-in is limited to existing Crabase accounts. Ask an administrator to add you.');
             if (!$account) {
                 $name = is_string($profile['name'] ?? null) ? $profile['name'] : '';
                 $name = preg_match('//u', $name) ? trim(preg_replace('/[\x00-\x1f\x7f<>]/u', '', $name)) : '';
