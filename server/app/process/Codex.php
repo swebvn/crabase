@@ -42,6 +42,9 @@ final class Codex
     private array $terminals = [];
     private int $terminalSequence = 0;
     private ?array $updateStatus = null;
+    /** @var resource|null Short-lived bin/publish-usage.php run sending due token usage to Console. */
+    private mixed $usagePublisher = null;
+    private float $usageCheckedAt = 0.0;
 
     public function __construct(?Logger $logger = null)
     {
@@ -98,6 +101,7 @@ final class Codex
                 }
             }
             $this->updateStatus = $status;
+            $this->publishTokenUsage();
         });
     }
 
@@ -328,6 +332,28 @@ final class Codex
         }
         unset($client);
         foreach (array_unique($revoked) as $chatId) $this->presence($chatId);
+    }
+
+    private function publishTokenUsage(): void
+    {
+        if (is_resource($this->usagePublisher)) {
+            if (proc_get_status($this->usagePublisher)['running']) return;
+            proc_close($this->usagePublisher);
+            $this->usagePublisher = null;
+        }
+        if (microtime(true) - $this->usageCheckedAt < 10 || !\app\service\TokenUsage::enabled()) return;
+        $this->usageCheckedAt = microtime(true);
+        try {
+            if (!\app\service\TokenUsage::hasDue()) return;
+        } catch (\Throwable $error) {
+            $this->logger->error('Token usage check failed.', ['exception' => $error]);
+            return;
+        }
+        $log = dirname(__DIR__, 2).'/runtime/logs/usage.log';
+        // Close inherited worker sockets (not O_CLOEXEC) so a restart mid-send can still bind its ports.
+        $launcher = 'for fd in /proc/$$/fd/*; do n=${fd##*/}; [ "$n" -gt 2 ] 2>/dev/null && eval "exec $n>&-" 2>/dev/null; done; exec "$0" "$1"';
+        $process = @proc_open(['/bin/bash', '-c', $launcher, PHP_BINARY, dirname(__DIR__, 2).'/bin/publish-usage.php'], [0=>['file','/dev/null','r'], 1=>['file',$log,'a'], 2=>['file',$log,'a']], $pipes);
+        $this->usagePublisher = is_resource($process) ? $process : null;
     }
 
     /** Fetches the release in a child process and replies when it exits, keeping the event loop free. */
@@ -579,6 +605,7 @@ final class Codex
                 ], \app\service\Attachments::input($next)),
             ], function () use ($activeId, $next) {
                 if (!isset($this->jobs[$activeId])) return;
+                $this->jobs[$activeId]['requester_message_id'] = $next['message_id'];
                 Store::notify(Store::connection()->table('jobs')->where('id', $next['id'])->update(['status'=>'done']));
                 Store::event($next['chat_id'], Store::agentName().' received a steering message');
                 $this->jobs[$activeId]['steering'] = false;
@@ -590,7 +617,8 @@ final class Codex
     private function startJob(array $next): void
     {
         $jobId = (int)$next['id'];
-        $this->jobs[$jobId] = $next + ['items' => [], 'approvals' => [], 'activity' => []];
+        // Token usage is credited to the person whose message drives the turn; a steer hands it to the steering person.
+        $this->jobs[$jobId] = $next + ['items' => [], 'approvals' => [], 'activity' => [], 'requester_message_id' => $next['message_id'] ?? null];
         Store::notify(Store::connection()->table('jobs')->where('id', $jobId)->update(['status'=>'running']));
         Store::notify(Store::connection()->table('chats')->where('id', $next['chat_id'])->update(['status'=>'running']));
         try {
@@ -720,6 +748,13 @@ final class Codex
             return;
         }
         if ($jobId === null) {
+            return;
+        }
+        if (($m['method'] ?? '') === 'thread/tokenUsage/updated') {
+            // Sub-agent threads map to their parent job, so their usage goes to the same person.
+            $job = $this->jobs[$jobId];
+            $requester = $job['requester_message_id'] ?? $job['message_id'] ?? null;
+            \app\service\TokenUsage::record($requester === null ? null : (int) $requester, (string) ($p['threadId'] ?? ''), (string) ($p['turnId'] ?? ''), (array) ($p['tokenUsage'] ?? []));
             return;
         }
         if (isset($p['threadId']) && $p['threadId'] !== ($this->jobs[$jobId]['thread_id'] ?? null)) {

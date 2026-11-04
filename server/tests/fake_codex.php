@@ -25,6 +25,10 @@ while (($line = fgets(STDIN)) !== false) {
         case 'test/complete':
             emit(['method'=>'turn/completed','params'=>['threadId'=>$params['threadId'],'turn'=>['id'=>$params['turnId'],'status'=>$request['method'] === 'turn/interrupt' ? 'interrupted' : 'completed']]]);
             break;
+        case 'test/usage':
+            emit(['method'=>'thread/tokenUsage/updated','params'=>['threadId'=>$params['threadId'],'turnId'=>$params['turnId'],'tokenUsage'=>[
+                'last'=>['totalTokens'=>$params['last']], 'total'=>['totalTokens'=>$params['total']], 'modelContextWindow'=>null]]]);
+            break;
         case 'test/fail':
             emit(['id'=>$request['id'],'error'=>['message'=>'One request failed']]);
             continue 2;

@@ -17,5 +17,8 @@ return [
   'parallel_chats' => max(1, (int)(getenv('CRABASE_PARALLEL_CHATS') ?: 12)),
   'database_path' => getenv('CRABASE_DB') ?: dirname(__DIR__).'/runtime/crabase.sqlite',
   'agent_name' => getenv('CRABASE_AGENT_NAME') ?: 'Crab',
+  // Per-user AI token usage is sent to Console Event Relay only when both are set.
+  'usage_relay_url' => getenv('CRABASE_USAGE_RELAY_URL') ?: '',
+  'usage_relay_token' => getenv('CRABASE_USAGE_RELAY_TOKEN') ?: '',
   'workspace_root' => getenv('CRABASE_WORKSPACE_ROOT') ?: dirname(__DIR__, 3),
 ];
