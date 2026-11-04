@@ -14,11 +14,11 @@ use Crab\Engine\WebSocket\Config;
 use Crab\Engine\Server\WebSocketServer;
 use Crab\Engine\WebSocket\WebSocketSession;
 use Crab\Engine\Http\Request;
-use Crab\Contracts\WorkerProvider;
+use Crab\Contracts\WorkerPlugin;
 use Crab\Contracts\Log\Logger;
 
 /** Registers the persistent Codex worker as a kept Crab server. */
-final class CodexServer implements WorkerProvider
+final class CodexServer implements WorkerPlugin
 {
     private ?Codex $codex = null;
 

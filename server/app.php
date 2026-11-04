@@ -3,11 +3,12 @@
 declare(strict_types=1);
 
 use Crab\App;
+use app\Setup;
 use app\process\CodexServer;
-use app\service\StoreProvider;
 
+// Crabase uses only the core plugins; its setup connects Store and registers the persistent Codex WebSocket server.
 return App::configure(__DIR__)
-    ->withProviders([StoreProvider::class, CodexServer::class])
+    ->withSetup([Setup::class, CodexServer::class])
     ->withRouting(routes: 'routes.php')
     // A reverse proxy on this host (Caddy) passes the browser address in X-Forwarded-For for login rate limits.
     ->withMiddleware(prepend: [new Crab\Http\TrustedProxies(['127.0.0.1', '::1'])])

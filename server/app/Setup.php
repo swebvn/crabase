@@ -2,14 +2,15 @@
 
 declare(strict_types=1);
 
-namespace app\service;
+namespace app;
 
+use app\service\Store;
 use Crab\Contracts\Container\Container;
-use Crab\Contracts\Provider;
+use Crab\Contracts\Plugin;
 use Crab\Database\DatabaseManager;
 
-/** Connects the legacy application facade to Crab's configured database pool. */
-final class StoreProvider implements Provider
+/** The application's setup: connects the legacy Store facade to Crab's configured database pool. */
+final class Setup implements Plugin
 {
     public function register(Container $container): void
     {
