@@ -20,24 +20,41 @@ final class TokenUsage
         return self::config()['usage_relay_url'] !== '';
     }
 
-    /** @param array{last?: array{totalTokens?: mixed}, total?: array{totalTokens?: mixed}} $usage */
-    public static function record(?int $requesterMessageId, string $threadId, string $turnId, array $usage): bool
+    /**
+     * Credits the growth of a thread's running total to the requester. Codex repeats its previous report when a thread
+     * resumes, so `last` alone would double count. A resumed thread seen for the first time only sets its baseline;
+     * new threads (fresh chats and sub-agents) start from zero.
+     *
+     * @param array{total?: array{totalTokens?: mixed}} $usage
+     */
+    public static function record(?int $requesterMessageId, string $threadId, bool $freshThread, array $usage): bool
     {
-        if (!self::enabled() || $requesterMessageId === null || $threadId === '' || $turnId === '') return false;
-        $tokens = $usage['last']['totalTokens'] ?? null;
+        if (!self::enabled() || $threadId === '') return false;
         $running = $usage['total']['totalTokens'] ?? null;
-        if (!is_int($tokens) || !is_int($running) || $tokens <= 0 || $running < 0) return false;
-        $email = Store::connection()->table('messages as m')->join('accounts as a', 'a.user_id', '=', 'm.user_id')
+        if (!is_int($running) || $running < 0) return false;
+        $email = $requesterMessageId === null ? null : Store::connection()->table('messages as m')->join('accounts as a', 'a.user_id', '=', 'm.user_id')
             ->where('m.id', $requesterMessageId)->value('a.email');
         $email = is_string($email) ? strtolower(trim($email)) : '';
-        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) return false;
-        // The thread's running total identifies one model call, so a repeated notification maps to the same ID.
-        $instance = (string) (parse_url((string) Auth::appOrigin(), PHP_URL_HOST) ?: 'local');
-        $id = 'crabase_' . substr(hash('sha256', "$instance|$threadId|$turnId|$running"), 0, 40);
-        Store::connection()->table('token_usages')->upsert([[
-            'usage_id' => $id, 'email' => $email, 'total_tokens' => $tokens, 'occurred_at' => gmdate('Y-m-d\TH:i:s\Z'),
-        ]], ['usage_id'], []);
-        return true;
+        return Store::transaction(function () use ($threadId, $freshThread, $running, $email): bool {
+            $threads = Store::connection()->table('token_usage_threads');
+            $baseline = (clone $threads)->where('thread_id', $threadId)->value('total_tokens');
+            if ($baseline === null) {
+                (clone $threads)->insert(['thread_id' => $threadId, 'total_tokens' => $freshThread ? 0 : $running]);
+                if (!$freshThread) return false;
+                $baseline = 0;
+            }
+            $tokens = $running - (int) $baseline;
+            if ($tokens <= 0) return false;
+            Store::connection()->table('token_usage_threads')->where('thread_id', $threadId)->update(['total_tokens' => $running]);
+            if (!filter_var($email, FILTER_VALIDATE_EMAIL)) return false;
+            // The running total identifies the credited growth, so a replayed report maps to the same ID.
+            $instance = (string) (parse_url((string) Auth::appOrigin(), PHP_URL_HOST) ?: 'local');
+            Store::connection()->table('token_usages')->upsert([[
+                'usage_id' => 'crabase_' . substr(hash('sha256', "$instance|$threadId|$running"), 0, 40),
+                'email' => $email, 'total_tokens' => $tokens, 'occurred_at' => gmdate('Y-m-d\TH:i:s\Z'),
+            ]], ['usage_id'], []);
+            return true;
+        });
     }
 
     public static function hasDue(): bool

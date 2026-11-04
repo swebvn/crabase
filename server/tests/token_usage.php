@@ -52,8 +52,10 @@ try {
         $rpc->invoke($worker, 'test/usage', ['threadId'=>$thread ?? $job()['thread_id'], 'turnId'=>$job()['turn_id'], 'last'=>$last, 'total'=>$total], fn ($result) => null);
     };
 
-    // One row per model call, credited by normalized email; repeats and zero-token calls add nothing.
+    // A new chat counts from zero; only growth of the running total is credited, so repeats add nothing,
+    // including Codex replaying its previous report under another turn (as it does when a thread resumes).
     $usage(1200, 1200); $usage(1200, 1200); $usage(0, 1200);
+    $rpc->invoke($worker, 'test/usage', ['threadId'=>$job()['thread_id'], 'turnId'=>'replayed-turn', 'last'=>1200, 'total'=>1200], fn ($result) => null);
     pump(fn () => count($rows()) === 1);
     usleep(100000); $tick->invoke($worker);
     usageCheck(count($rows()) === 1 && $rows()[0]['email'] === 'alice@example.com' && (int) $rows()[0]['total_tokens'] === 1200, 'dedupe and email');
@@ -101,11 +103,26 @@ try {
     usageCheck(TokenUsage::publishDue() === ['sent'=>0, 'retry'=>0, 'failed'=>1], 'conflict is not retried');
     usageCheck(!TokenUsage::hasDue() && $rows()[4]['last_error'] === 'HTTP 409', 'conflict parked');
 
+    // A chat with history before this feature (resumed thread) only sets its baseline on the first report.
+    Store::connection()->table('jobs')->update(['status'=>'done']);
+    $history = Actions::handle('create', ['title'=>'History','project_id'=>'fixture'])['id'];
+    Store::connection()->table('chats')->where('id', $history)->update(['thread_id'=>'old-thread']);
+    Actions::handle('message', ['chat_id'=>$history,'body'=>'Resume','mode'=>'agent','user_id'=>$alice]);
+    $resumed = function () use ($jobs, $worker, $history) { foreach ($jobs->getValue($worker) as $j) if ($j['chat_id'] === $history) return $j; return null; };
+    pump(fn () => !empty($resumed()['turn_id']));
+    $resumedUsage = fn (int $last, int $total) => $rpc->invoke($worker, 'test/usage', ['threadId'=>'old-thread', 'turnId'=>$resumed()['turn_id'], 'last'=>$last, 'total'=>$total], fn ($result) => null);
+    $resumedUsage(112818, 5000000); usleep(100000); $tick->invoke($worker); usleep(100000); $tick->invoke($worker);
+    usageCheck(count($rows()) === 5, 'resumed history is not credited');
+    $resumedUsage(119638, 5000700);
+    pump(fn () => count($rows()) === 6);
+    usageCheck((int) $rows()[5]['total_tokens'] === 700 && $rows()[5]['email'] === 'alice@example.com', 'resumed growth credited');
+    $rows5 = count($rows());
+
     // Disabled without a relay URL: nothing is recorded.
     putenv('CRABASE_USAGE_RELAY_URL=');
     $usage(100, 4700); usleep(100000); $tick->invoke($worker); usleep(100000); $tick->invoke($worker);
-    usageCheck(count($rows()) === 5 && !TokenUsage::enabled(), 'disabled without URL');
-    echo "PASS: token usage per requester (steering, sub-agents), per-call dedupe, AG-compatible payload, retries, conflicts and opt-in.\n";
+    usageCheck(count($rows()) === $rows5 && !TokenUsage::enabled(), 'disabled without URL');
+    echo "PASS: token usage per requester (steering, sub-agents), running-total growth only (replays, resumed history), AG-compatible payload, retries, conflicts and opt-in.\n";
 } finally {
     if (is_resource($relay)) { proc_terminate($relay); proc_close($relay); }
     (new ReflectionMethod($worker, 'shutdown'))->invoke($worker);

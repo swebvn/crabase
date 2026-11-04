@@ -618,7 +618,7 @@ final class Codex
     {
         $jobId = (int)$next['id'];
         // Token usage is credited to the person whose message drives the turn; a steer hands it to the steering person.
-        $this->jobs[$jobId] = $next + ['items' => [], 'approvals' => [], 'activity' => [], 'requester_message_id' => $next['message_id'] ?? null];
+        $this->jobs[$jobId] = $next + ['items' => [], 'approvals' => [], 'activity' => [], 'requester_message_id' => $next['message_id'] ?? null, 'resumed_thread_id' => $next['thread_id'] ?? null];
         Store::notify(Store::connection()->table('jobs')->where('id', $jobId)->update(['status'=>'running']));
         Store::notify(Store::connection()->table('chats')->where('id', $next['chat_id'])->update(['status'=>'running']));
         try {
@@ -754,7 +754,10 @@ final class Codex
             // Sub-agent threads map to their parent job, so their usage goes to the same person.
             $job = $this->jobs[$jobId];
             $requester = $job['requester_message_id'] ?? $job['message_id'] ?? null;
-            \app\service\TokenUsage::record($requester === null ? null : (int) $requester, (string) ($p['threadId'] ?? ''), (string) ($p['turnId'] ?? ''), (array) ($p['tokenUsage'] ?? []));
+            $thread = (string) ($p['threadId'] ?? '');
+            // Only the thread this job resumed has history before this job; new chats and sub-agent threads start at zero.
+            $fresh = $thread !== '' && $thread !== ($job['resumed_thread_id'] ?? null);
+            \app\service\TokenUsage::record($requester === null ? null : (int) $requester, $thread, $fresh, (array) ($p['tokenUsage'] ?? []));
             return;
         }
         if (isset($p['threadId']) && $p['threadId'] !== ($this->jobs[$jobId]['thread_id'] ?? null)) {
