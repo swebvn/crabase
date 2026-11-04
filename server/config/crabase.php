@@ -17,8 +17,13 @@ return [
   'parallel_chats' => max(1, (int)(getenv('CRABASE_PARALLEL_CHATS') ?: 12)),
   'database_path' => getenv('CRABASE_DB') ?: dirname(__DIR__).'/runtime/crabase.sqlite',
   'agent_name' => getenv('CRABASE_AGENT_NAME') ?: 'Crab',
-  // Per-user AI token usage is sent to Console Event Relay only when both are set.
-  'usage_relay_url' => getenv('CRABASE_USAGE_RELAY_URL') ?: '',
+  // Per-user AI token usage goes to Console Event Relay by default; set CRABASE_USAGE_RELAY_URL=off (or empty) to disable,
+  // e.g. on developer machines whose Codex uses a personal AG key that AG already credits.
+  'usage_relay_url' => match ($relay = getenv('CRABASE_USAGE_RELAY_URL')) {
+    false => 'https://console.tdagroup.co/event-relay/crabase/events',
+    '', 'off', 'false', '0' => '',
+    default => $relay,
+  },
   'usage_relay_token' => getenv('CRABASE_USAGE_RELAY_TOKEN') ?: '',
   'workspace_root' => getenv('CRABASE_WORKSPACE_ROOT') ?: dirname(__DIR__, 3),
 ];
