@@ -21,6 +21,33 @@ export function groupConversationMessages(messages: Message[]) {
   return groups;
 }
 
+const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/** A finished agent turn: its one-line work summary, the hidden work, and the final reply shown below it. */
+export function summarizeTurn(group: Message[]) {
+  const tools = group.filter((message) => message.role === "tool");
+  if (!tools.length) return null;
+  let finalIndex = -1;
+  for (let index = group.length - 1; index >= 0; index -= 1) {
+    if (group[index].role === "assistant" && group[index].body.trim()) { finalIndex = index; break; }
+  }
+  const commands = tools.filter((tool) => tool.author === "Terminal").length;
+  const edits = tools.filter((tool) => tool.author === "File changes");
+  const files = new Set(edits.flatMap((tool) => tool.body.split("\n").map((path) => path.trim()).filter(Boolean))).size || edits.length;
+  const other = tools.length - commands - edits.length;
+  const parts = [
+    commands && `ran ${count(commands, "command", "commands")}`,
+    edits.length && `edited ${count(files, "file", "files")}`,
+    other && `used ${count(other, "tool", "tools")}`,
+  ].filter(Boolean) as string[];
+  const label = parts.join(", ");
+  return {
+    label: label.charAt(0).toUpperCase() + label.slice(1),
+    final: finalIndex >= 0 ? group[finalIndex] : null,
+    work: group.filter((_, index) => index !== finalIndex),
+  };
+}
+
 export function applyMessagePatch(
   previous: Message[],
   updates: Message[] = [],

@@ -1,26 +1,37 @@
 import { Button } from "../components/ui";
 import { memo, useEffect, useMemo, useRef, type ReactNode } from "react";
-import { ChevronDown, Loader2, Terminal } from "lucide-react";
+import { ChevronDown, FilePen, ListChecks, Loader2, Terminal } from "lucide-react";
 import { MessageContent } from "../components/MessageContent";
 import { AttachmentList } from '../components/AttachmentList';
 import type { Approval, Avatars, Chat, Message } from "../types";
 import { Avatar } from "../components/Avatar";
 import { Crab } from "../components/Crab";
 import { time } from "../lib/format";
-import { groupConversationMessages } from "../lib/messages";
+import { groupConversationMessages, summarizeTurn } from "../lib/messages";
 import { useSmoothText } from "../hooks/useSmoothText";
+/** One agent header per turn; intermediate replies and tools in the turn share it. */
+function AgentAuthor({ agentName }: { agentName: string }) {
+  return (
+    <div className="message-author">
+      <span className="agent-avatar"><Crab size={24} /></span>
+      <strong>{agentName}</strong>
+    </div>
+  );
+}
 const MessageItem = memo(function MessageItem({
   message,
   agentName,
   avatars,
   onFileMention,
   streaming,
+  showAuthor = true,
 }: {
   message: Message;
   agentName: string;
   avatars: Avatars;
   onFileMention?: (path: string) => void;
   streaming: boolean;
+  showAuthor?: boolean;
 }) {
   const human = message.role === "user" || message.role === "note";
   const body =
@@ -33,7 +44,7 @@ const MessageItem = memo(function MessageItem({
       <article className="message tool">
         <details className="tool-output">
           <summary>
-            <Terminal size={14} aria-hidden="true" />
+            {message.author === "File changes" ? <FilePen size={14} aria-hidden="true" /> : <Terminal size={14} aria-hidden="true" />}
             <span>{message.author === "Terminal" ? "Command" : message.author}</span>
             <code>{message.body.split("\n")[0]}</code>
             <ChevronDown size={12} aria-hidden="true" />
@@ -47,20 +58,15 @@ const MessageItem = memo(function MessageItem({
       className={`message ${human ? "human" : "agent"} ${message.role}`}
       aria-busy={streaming}
     >
-      <div className="message-author">
-        {human ? (
-          <Avatar user={message.author} avatars={avatars} />
-        ) : (
-          <span className="agent-avatar">
-            <Crab size={24} />
-          </span>
-        )}
-        <strong>{human ? message.author : agentName}</strong>
+      {showAuthor && (human ? <div className="message-author">
+        <Avatar user={message.author} avatars={avatars} />
+        <strong>{message.author}</strong>
         {message.role === "note" && <span className="message-tag">Note</span>}
-        {message.role === "guide" && (
-          <span className="message-tag">Getting started</span>
-        )}
-      </div>
+      </div> : message.role === "guide" ? <div className="message-author">
+        <span className="agent-avatar"><Crab size={24} /></span>
+        <strong>{agentName}</strong>
+        <span className="message-tag">Getting started</span>
+      </div> : <AgentAuthor agentName={agentName} />)}
       <div className="message-body">
         <AttachmentList files={message.attachments || []} />
         {(message.body || !message.attachments?.length) && <MessageContent onFileMention={onFileMention}>
@@ -178,19 +184,36 @@ export function ChatPage({
           {loaded && !messageGroups.length && (
             <p className="muted">Start the conversation below.</p>
           )}
-          {messageGroups.map((group) => {
+          {messageGroups.map((group, groupIndex) => {
             const first = group[0];
             const last = group[group.length - 1];
             const human = first.role === "user" || first.role === "note";
+            const agent = ["assistant", "tool"].includes(first.role);
+            // The turn still in progress stays expanded; finished turns collapse their work to one line.
+            const active = groupIndex === messageGroups.length - 1 && !!chat && chat.status !== "idle";
+            const summary = agent && !active ? summarizeTurn(group) : null;
+            const item = (message: Message) => (
+              <MessageItem
+                key={message.id}
+                {...{ message, agentName, avatars, onFileMention }}
+                streaming={message.id === streamingId}
+                showAuthor={!agent}
+              />
+            );
             return (
               <div className={`message-group ${human ? "human" : "agent"}`} key={first.id}>
-                {group.map((message) => (
-                  <MessageItem
-                    key={message.id}
-                    {...{ message, agentName, avatars, onFileMention }}
-                    streaming={message.id === streamingId}
-                  />
-                ))}
+                {agent && <AgentAuthor agentName={agentName} />}
+                {summary ? <>
+                  <details className="tool-output turn-summary">
+                    <summary>
+                      <ListChecks size={14} aria-hidden="true" />
+                      <span>{summary.label}</span>
+                      <ChevronDown size={12} aria-hidden="true" />
+                    </summary>
+                    <div className="turn-work">{summary.work.map(item)}</div>
+                  </details>
+                  {summary.final && item(summary.final)}
+                </> : group.map(item)}
                 <time className="message-time" dateTime={last.created_at}>
                   {time(last.created_at)}
                 </time>

@@ -1424,6 +1424,18 @@ small {
 .tool-output {
   font-size: var(--type-meta);
 }
+/* Finished turns: one work-summary line above the final reply; the process expands beneath a guide line. */
+.turn-summary { margin-bottom: var(--space-2); }
+.turn-summary > summary { color: var(--subtle); font-size: var(--type-label); }
+.turn-summary > summary > span { flex: 1; min-width: 0; }
+.turn-work {
+  margin: var(--space-1) 0 var(--space-2) var(--space-3);
+  padding-left: var(--space-3);
+  border-left: 1px solid var(--line);
+}
+.turn-work > .message { margin-bottom: var(--space-3); }
+.turn-work > .message.tool { margin-bottom: var(--space-1); }
+.turn-work > .message:last-child { margin-bottom: 0; }
 .tool-output summary {
   display: flex;
   align-items: center;
