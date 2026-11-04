@@ -110,19 +110,22 @@ try {
     Actions::handle('message', ['chat_id'=>$history,'body'=>'Resume','mode'=>'agent','user_id'=>$alice]);
     $resumed = function () use ($jobs, $worker, $history) { foreach ($jobs->getValue($worker) as $j) if ($j['chat_id'] === $history) return $j; return null; };
     pump(fn () => !empty($resumed()['turn_id']));
-    $resumedUsage = fn (int $last, int $total) => $rpc->invoke($worker, 'test/usage', ['threadId'=>'old-thread', 'turnId'=>$resumed()['turn_id'], 'last'=>$last, 'total'=>$total], fn ($result) => null);
-    $resumedUsage(112818, 5000000); usleep(100000); $tick->invoke($worker); usleep(100000); $tick->invoke($worker);
+    $resumedUsage = fn (int $last, int $total, int $cached) => $rpc->invoke($worker, 'test/usage', ['threadId'=>'old-thread', 'turnId'=>$resumed()['turn_id'], 'last'=>$last, 'total'=>$total, 'cached'=>$cached], fn ($result) => null);
+    $resumedUsage(112818, 5000000, 4800000); usleep(100000); $tick->invoke($worker); usleep(100000); $tick->invoke($worker);
     usageCheck(count($rows()) === 5, 'resumed history is not credited');
-    $resumedUsage(119638, 5000700);
+    // Only fresh tokens count: 119,638 more tokens of which 116,226 are cached re-reads credit 3,412.
+    $resumedUsage(119638, 5119638, 4916226);
     pump(fn () => count($rows()) === 6);
-    usageCheck((int) $rows()[5]['total_tokens'] === 700 && $rows()[5]['email'] === 'alice@example.com', 'resumed growth credited');
+    usageCheck((int) $rows()[5]['total_tokens'] === 3412 && $rows()[5]['email'] === 'alice@example.com', 'resumed growth credited without cached input');
+    $resumedUsage(119638, 5119638, 4916226); usleep(100000); $tick->invoke($worker); usleep(100000); $tick->invoke($worker);
+    usageCheck(count($rows()) === 6, 'replay of a cached-heavy report adds nothing');
     $rows5 = count($rows());
 
     // Disabled without a relay URL: nothing is recorded.
     putenv('CRABASE_USAGE_RELAY_URL=');
     $usage(100, 4700); usleep(100000); $tick->invoke($worker); usleep(100000); $tick->invoke($worker);
     usageCheck(count($rows()) === $rows5 && !TokenUsage::enabled(), 'disabled without URL');
-    echo "PASS: token usage per requester (steering, sub-agents), running-total growth only (replays, resumed history), AG-compatible payload, retries, conflicts and opt-in.\n";
+    echo "PASS: token usage per requester (steering, sub-agents), fresh-token growth only (cached input excluded, replays, resumed history), AG-compatible payload, retries, conflicts and opt-in.\n";
 } finally {
     if (is_resource($relay)) { proc_terminate($relay); proc_close($relay); }
     (new ReflectionMethod($worker, 'shutdown'))->invoke($worker);

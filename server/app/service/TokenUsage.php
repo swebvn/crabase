@@ -21,17 +21,20 @@ final class TokenUsage
     }
 
     /**
-     * Credits the growth of a thread's running total to the requester. Codex repeats its previous report when a thread
+     * Credits the growth of a thread's running fresh-token total (total minus cached input) to the requester;
+     * cached input is re-read conversation history, so it measures chat length rather than work. Codex repeats its previous report when a thread
      * resumes, so `last` alone would double count. A resumed thread seen for the first time only sets its baseline;
      * new threads (fresh chats and sub-agents) start from zero.
      *
-     * @param array{total?: array{totalTokens?: mixed}} $usage
+     * @param array{total?: array{totalTokens?: mixed, cachedInputTokens?: mixed}} $usage
      */
     public static function record(?int $requesterMessageId, string $threadId, bool $freshThread, array $usage): bool
     {
         if (!self::enabled() || $threadId === '') return false;
-        $running = $usage['total']['totalTokens'] ?? null;
-        if (!is_int($running) || $running < 0) return false;
+        $total = $usage['total']['totalTokens'] ?? null;
+        $cached = $usage['total']['cachedInputTokens'] ?? 0;
+        if (!is_int($total) || $total < 0 || !is_int($cached) || $cached < 0) return false;
+        $running = max(0, $total - $cached);
         $email = $requesterMessageId === null ? null : Store::connection()->table('messages as m')->join('accounts as a', 'a.user_id', '=', 'm.user_id')
             ->where('m.id', $requesterMessageId)->value('a.email');
         $email = is_string($email) ? strtolower(trim($email)) : '';
@@ -50,7 +53,7 @@ final class TokenUsage
             // The running total identifies the credited growth, so a replayed report maps to the same ID.
             $instance = (string) (parse_url((string) Auth::appOrigin(), PHP_URL_HOST) ?: 'local');
             Store::connection()->table('token_usages')->upsert([[
-                'usage_id' => 'crabase_' . substr(hash('sha256', "$instance|$threadId|$running"), 0, 40),
+                'usage_id' => 'crabase_' . substr(hash('sha256', "fresh|$instance|$threadId|$running"), 0, 40),
                 'email' => $email, 'total_tokens' => $tokens, 'occurred_at' => gmdate('Y-m-d\TH:i:s\Z'),
             ]], ['usage_id'], []);
             return true;

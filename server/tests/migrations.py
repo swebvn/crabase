@@ -23,14 +23,14 @@ with tempfile.TemporaryDirectory(prefix='crabase-migrations-') as temp:
     path = Path(temp) / 'test.sqlite'
     crab(path, 'migrate')
     with sqlite3.connect(path) as db:
-        assert db.execute("SELECT count(*) FROM migrations WHERE batch > 0").fetchone() == (22,)
+        assert db.execute("SELECT count(*) FROM migrations WHERE batch > 0").fetchone() == (23,)
         assert not db.execute("SELECT name FROM sqlite_master WHERE name='phinxlog'").fetchall()
         db.execute("INSERT INTO projects (id,name,path) VALUES ('test','Test','/test')")
         db.execute("INSERT INTO chats (id,title,created_at,updated_at) VALUES ('1234567890abcdef','Preserve me','2026-09-09','2026-09-09')")
     crab(path, 'migrate')
     with sqlite3.connect(path) as db:
         assert db.execute('SELECT title FROM chats').fetchall() == [('Preserve me',)]
-        assert db.execute('SELECT count(*) FROM migrations').fetchone() == (22,)
+        assert db.execute('SELECT count(*) FROM migrations').fetchone() == (23,)
 
     # The chat model migration fills existing chats from their latest agent request.
     backfill = Path(temp) / 'backfill.sqlite'
