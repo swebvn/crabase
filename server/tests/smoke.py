@@ -148,6 +148,10 @@ if __name__=='__main__':
     assert health['checked_at'] and len(health['checks']) >= 6
     assert {'WebSocket worker','Codex app-server','Database','Agent queue','Terminal host','Runtime storage','Workspace storage'} <= {check['name'] for check in health['checks']}
     assert all(check['status'] in {'ok','warning','error','idle'} and check['detail'] for check in health['checks'])
+    second.call('usageReport',{'days':7},error=True)
+    usage=first.call('usageReport',{'days':7})
+    assert usage['days'] == 7 and isinstance(usage['users'],list) and 'relay' in usage and not any('password' in key for row in usage['users'] for key in row)
+    first.call('usageReport',{'days':'7'},error=True)
     # Any signed-in user can browse folders and add projects; new projects are public and the creator is also a member.
     assert 'folders' in second.call('projectFolders')
     second.call('worktreeCreate',{'project_id':'invalid','branch':'feature/test'},error=True)
@@ -195,8 +199,11 @@ if __name__=='__main__':
         assert second.call('sync',{'chat_id':child_chat})['thread']['chat']['project_id']==child
         second.events.clear()
         first.call('projectSharingSave',{'project_id':project_id,'visibility':'private','members':[]})
-        revoked=second.patch('state')
-        assert revoked['access_revoked']
+        # A state patch from the child-chat setup can still be in flight; the revocation is the next one that says so.
+        for _ in range(5):
+            revoked=second.patch('state')
+            if revoked.get('access_revoked'): break
+        assert revoked.get('access_revoked')
         assert project_id not in [p['id'] for p in revoked['state']['projects']]
         assert child not in [p['id'] for p in revoked['state']['projects']]
         second.call('terminalOpen',error=True)
