@@ -121,11 +121,20 @@ try {
     usageCheck(count($rows()) === 6, 'replay of a cached-heavy report adds nothing');
     $rows5 = count($rows());
 
-    // Disabled without a relay URL: nothing is recorded.
+    // Disabled without a relay URL: usage is still kept for the admin report but never queued for Console.
     putenv('CRABASE_USAGE_RELAY_URL=');
-    $usage(100, 4700); usleep(100000); $tick->invoke($worker); usleep(100000); $tick->invoke($worker);
-    usageCheck(count($rows()) === $rows5 && !TokenUsage::enabled(), 'disabled without URL');
-    echo "PASS: token usage per requester (steering, sub-agents), fresh-token growth only (cached input excluded, replays, resumed history), AG-compatible payload, retries, conflicts and opt-in.\n";
+    $usage(100, 4700); pump(fn () => count($rows()) === $rows5 + 1);
+    $local = $rows()[$rows5];
+    usageCheck(!TokenUsage::enabled() && $local['sent_at'] === null && $local['last_error'] === 'Relay disabled' && $local['next_attempt_at'] === '9999-12-31T00:00:00Z', 'disabled without URL');
+
+    // Admin report: fresh tokens per account, largest first, with relay status; periods are validated.
+    $report = TokenUsage::report(0);
+    $totals = array_column($report['users'], 'tokens', 'email');
+    $sum = (int) Store::connection()->table('token_usages')->sum('total_tokens');
+    usageCheck($report['total'] === $sum && $totals['alice@example.com'] + $totals['bob@example.com'] === $sum && $report['users'][0]['tokens'] >= $report['users'][1]['tokens'], 'report totals');
+    usageCheck(!$report['relay']['enabled'] && $report['relay']['failed'] >= 1 && TokenUsage::report(1)['total'] === $sum, 'report relay and period');
+    foreach ([5, '30', -1] as $bad) { try { TokenUsage::report($bad); usageCheck(false, 'bad period accepted'); } catch (InvalidArgumentException) {} }
+    echo "PASS: token usage per requester (steering, sub-agents), fresh-token growth only (cached input excluded, replays, resumed history), AG-compatible payload, retries, conflicts, opt-in relay and the admin report.\n";
 } finally {
     if (is_resource($relay)) { proc_terminate($relay); proc_close($relay); }
     (new ReflectionMethod($worker, 'shutdown'))->invoke($worker);

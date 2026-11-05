@@ -244,6 +244,7 @@ final class Codex
                     'profileSave' => Auth::update($actor, $m['data'], false),
                     'usersList' => ['users'=>Auth::users($actor)] + ($actor['admin'] ? ['oauth'=>\app\service\OAuth::settings()] : []),
                     'oauthSettingsSave' => $actor['admin'] ? \app\service\OAuth::saveSettings($m['data']) : throw new \InvalidArgumentException('Administrator access required.'),
+                    'usageReport' => $actor['admin'] ? \app\service\TokenUsage::report($m['data']['days'] ?? 30) : throw new \InvalidArgumentException('Administrator access required.'),
                     'health' => $actor['admin'] ? $this->health() : throw new \InvalidArgumentException('Administrator access required.'),
                     'updateStart' => $actor['admin'] ? Updater::start([
                         'active_jobs' => Store::connection()->table('jobs')->whereIn('status', ['queued', 'running'])->count(),

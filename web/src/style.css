@@ -37,6 +37,10 @@
 .settings-inline-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .settings-toolbar { display: flex; align-items: center; gap: var(--space-3); }
 .settings-toolbar > .settings-hint { flex-shrink: 0; }
+.settings-segmented { display: flex; flex-shrink: 0; gap: var(--space-1); }
+.settings-segmented .text-button { white-space: nowrap; }
+.settings-segmented + .settings-hint { margin-left: auto; }
+.settings-segmented [aria-pressed="true"] { background: var(--hover); color: var(--text); font-weight: var(--weight-medium); }
 .settings-search { position: relative; flex: 1; min-width: 0; max-width: 360px; }
 .settings-search > svg { position: absolute; top: 50%; left: var(--space-2); transform: translateY(-50%); color: var(--muted); pointer-events: none; }
 .settings-search > .input { width: 100%; min-height: var(--control-height); padding: var(--space-1) var(--space-2) var(--space-1) var(--space-8); }
@@ -62,6 +66,7 @@
 .settings-status[data-status="error"] { color: var(--danger); }
 .settings-status[data-status="idle"] { color: var(--subtle); }
 .settings-health th:last-child { width: 112px; }
+.settings-usage :is(th, td):last-child { text-align: right; }
 .settings-health-summary { display: flex; align-items: center; gap: var(--space-2); font-size: var(--type-label); }
 .settings-health-summary svg { flex-shrink: 0; color: var(--subtle); }
 .settings-update-card { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)) auto; align-items: center; gap: var(--space-3); padding: var(--space-3); border: 1px solid var(--line); border-radius: var(--radius-small); background: var(--surface); }

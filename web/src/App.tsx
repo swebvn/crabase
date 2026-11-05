@@ -9,7 +9,7 @@ import { usePreferences } from "./hooks/usePreferences";
 import { useProjectNavigation } from "./hooks/useProjectNavigation";
 import { isSidebarShortcut } from "./lib/shortcuts";
 import { updateRecord } from "./lib/layout";
-import { chatPath, newChatPath } from "./lib/routes";
+import { chatPath, newChatPath, settingsPath } from "./lib/routes";
 import { rootProject } from "./lib/projects";
 import { Sidebar } from "./components/Sidebar";
 import { Header } from "./components/Header";
@@ -49,7 +49,7 @@ export function App() {
   const { user } = useAuth();
   const { route, navigate } = useRoute();
   useEffect(() => {
-    if (user.avatar_required && route.page !== 'settings') navigate('/settings');
+    if (user.avatar_required && route.page !== 'settings') navigate(settingsPath(), true);
   }, [user.avatar_required, route.page, navigate]);
   const selected = route.page === "chat" ? route.id : "";
   const workspace = useWorkspace(selected);
@@ -154,7 +154,7 @@ export function App() {
     { id: "new-project", label: "Open project", keywords: ["project"], run: () => setDialog("project") },
     ...selected ? [{ id: "terminal", label: "Open terminal", keywords: ["shell"], run: () => void openTerminal() }] : [],
     ...selected && project ? [{ id: "code", label: "Open code editor", keywords: ["editor"], run: () => selectWorkspace("code") }] : [],
-    { id: "settings", label: "Open settings", run: () => navigate('/settings') },
+    { id: "settings", label: "Open settings", run: () => navigate(settingsPath()) },
     { id: "sidebar", label: "Toggle left sidebar", run: toggleSidebar },
     ...selected ? [{ id: "right-sidebar", label: "Toggle right sidebar", keywords: ["workspace", "panel"], run: () => workspaceTab ? setWorkspaceTab("") : restoreWorkspace() }] : [],
     { id: "archived", label: "Show or hide archived projects", keywords: ["archive"], run: () => window.dispatchEvent(new Event("crabase:toggle-archived")) },
@@ -404,7 +404,8 @@ export function App() {
   </WorkspacePanel>;
   if (route.page === "settings" || user.avatar_required) return <main className="settings-shell">
     <Suspense fallback={<p role="status">Loading settings…</p>}>
-      <SettingsPage request={request} projects={data.projects} loaded={loaded} back={backFromSettings} {...preferences} />
+      <SettingsPage section={route.page === "settings" ? route.section : "profile"} item={route.page === "settings" ? route.item : undefined} navigate={navigate} live={live}
+        request={request} projects={data.projects} loaded={loaded} back={backFromSettings} {...preferences} />
     </Suspense>
   </main>;
   return (
@@ -436,7 +437,7 @@ export function App() {
         open={open}
         newChat={newChat}
         showDialog={(value) => {
-          if (value === "settings") { navigate('/settings'); setSidebar(false); setDialog(''); }
+          if (value === "settings") { navigate(settingsPath()); setSidebar(false); setDialog(''); }
           else setDialog(value);
         }}
         archive={(target) => void archive(target)}

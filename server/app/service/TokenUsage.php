@@ -24,13 +24,14 @@ final class TokenUsage
      * Credits the growth of a thread's running fresh-token total (total minus cached input) to the requester;
      * cached input is re-read conversation history, so it measures chat length rather than work. Codex repeats its previous report when a thread
      * resumes, so `last` alone would double count. A resumed thread seen for the first time only sets its baseline;
-     * new threads (fresh chats and sub-agents) start from zero.
+     * new threads (fresh chats and sub-agents) start from zero. Usage is always kept for the admin report; rows recorded
+     * while the relay is off are marked never-send so enabling it later does not flush an old backlog to Console.
      *
      * @param array{total?: array{totalTokens?: mixed, cachedInputTokens?: mixed}} $usage
      */
     public static function record(?int $requesterMessageId, string $threadId, bool $freshThread, array $usage): bool
     {
-        if (!self::enabled() || $threadId === '') return false;
+        if ($threadId === '') return false;
         $total = $usage['total']['totalTokens'] ?? null;
         $cached = $usage['total']['cachedInputTokens'] ?? 0;
         if (!is_int($total) || $total < 0 || !is_int($cached) || $cached < 0) return false;
@@ -55,9 +56,36 @@ final class TokenUsage
             Store::connection()->table('token_usages')->upsert([[
                 'usage_id' => 'crabase_' . substr(hash('sha256', "fresh|$instance|$threadId|$running"), 0, 40),
                 'email' => $email, 'total_tokens' => $tokens, 'occurred_at' => gmdate('Y-m-d\TH:i:s\Z'),
-            ]], ['usage_id'], []);
+            ] + (self::enabled() ? [] : ['next_attempt_at' => self::NEVER, 'last_error' => 'Relay disabled'])], ['usage_id'], []);
             return true;
         });
+    }
+
+    /** Admin report of fresh tokens per signed-up user for the last $days days (0 = all time), largest first. */
+    public static function report(mixed $days): array
+    {
+        if (!is_int($days) || !in_array($days, [0, 1, 7, 30, 90], true)) throw new \InvalidArgumentException('Choose a valid usage period.');
+        $since = $days ? gmdate('Y-m-d\TH:i:s\Z', time() - $days * 86400) : null;
+        $usage = Store::connection()->table('token_usages')->when($since, fn ($query) => $query->where('occurred_at', '>=', $since))
+            ->groupBy('email')->selectRaw('email, SUM(total_tokens) AS tokens, COUNT(*) AS calls, MAX(occurred_at) AS last_used')->get();
+        $byEmail = array_column($usage, null, 'email');
+        $users = Store::connection()->table('accounts as a')->join('users as u', 'u.id', '=', 'a.user_id')
+            ->select('u.id', 'u.name', 'u.avatar_url', 'a.email', 'a.enabled')->get();
+        $rows = [];
+        foreach ($users as $user) {
+            $row = $byEmail[strtolower(trim($user['email']))] ?? null;
+            unset($byEmail[strtolower(trim($user['email']))]);
+            $rows[] = ['id' => $user['id'], 'name' => $user['name'], 'email' => $user['email'], 'enabled' => (bool) $user['enabled'],
+                'avatar_url' => $user['avatar_url'], 'avatar_fallback' => Auth::avatar($user['email']),
+                'tokens' => (int) ($row['tokens'] ?? 0), 'calls' => (int) ($row['calls'] ?? 0), 'last_used' => $row['last_used'] ?? null];
+        }
+        // Usage credited to an email whose account was since removed or renamed still counts toward the total.
+        foreach ($byEmail as $email => $row) $rows[] = ['id' => null, 'name' => $email, 'email' => $email, 'enabled' => false,
+            'avatar_url' => '', 'avatar_fallback' => Auth::avatar($email), 'tokens' => (int) $row['tokens'], 'calls' => (int) $row['calls'], 'last_used' => $row['last_used']];
+        usort($rows, fn (array $a, array $b) => [$b['tokens'], $a['name']] <=> [$a['tokens'], $b['name']]);
+        $relay = Store::connection()->table('token_usages')->whereNull('sent_at')->selectRaw("SUM(next_attempt_at IS NULL OR next_attempt_at < ?) AS pending, SUM(next_attempt_at = ? AND last_error <> 'Relay disabled') AS failed", [self::NEVER, self::NEVER])->first();
+        return ['days' => $days, 'total' => array_sum(array_column($rows, 'tokens')), 'users' => $rows,
+            'relay' => ['enabled' => self::enabled(), 'pending' => (int) ($relay['pending'] ?? 0), 'failed' => (int) ($relay['failed'] ?? 0)]];
     }
 
     public static function hasDue(): bool

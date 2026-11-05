@@ -33,8 +33,14 @@ export function Button({ variant = "secondary", className, ...props }: ButtonCon
   return <ButtonControl {...props} className={buttonClassName(variant, className)} />;
 }
 
-export function ButtonLink({ variant = "secondary", className, ...props }: ComponentPropsWithRef<"a"> & ButtonStyleProps) {
-  return <a {...props} className={buttonClassName(variant, className)} />;
+/** Pass `navigate` for in-app routes: plain clicks stay in the app, modified clicks keep native link behavior. */
+export function ButtonLink({ variant = "secondary", className, navigate, onClick, ...props }: ComponentPropsWithRef<"a"> & ButtonStyleProps & { navigate?: (path: string) => void }) {
+  return <a {...props} className={buttonClassName(variant, className)} onClick={event => {
+    onClick?.(event);
+    if (!navigate || !props.href || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    navigate(props.href);
+  }} />;
 }
 
 /** Lock beside a private original project's name; worktrees inherit access, so they never show it. */

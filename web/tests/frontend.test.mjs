@@ -1,12 +1,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseRoute, chatPath, newChatPath, projectPath } from "../src/lib/routes.ts";
+import { parseRoute, chatPath, newChatPath, projectPath, settingsPath } from "../src/lib/routes.ts";
 import { applyMessagePatch, nextStreamText } from "../src/lib/messages.ts";
 import { avatarUrl, validAvatarUrl } from "../src/lib/identity.ts";
 
 test("chat routes support direct loads without interpreting arbitrary paths", () => {
   assert.deepEqual(parseRoute("/"), { page: "new" });
-  assert.deepEqual(parseRoute("/settings"), { page: "settings" });
+  assert.deepEqual(parseRoute("/settings"), { page: "settings", section: "profile" });
+  assert.deepEqual(parseRoute("/settings/"), { page: "settings", section: "profile" });
+  assert.deepEqual(parseRoute(settingsPath("usage")), { page: "settings", section: "usage" });
+  assert.deepEqual(parseRoute(settingsPath("users", "new")), { page: "settings", section: "users", item: "new" });
+  assert.deepEqual(parseRoute("/settings/projects/project-a/"), { page: "settings", section: "projects", item: "project-a" });
+  for (const path of ["/settings/billing", "/settings/health/x", "/settings/users/a/b", "/settings/users/%2F", `/settings/users/${"a".repeat(65)}`])
+    assert.equal(parseRoute(path).page, "missing", path);
   const id = "fb6904dc4c961211";
   assert.deepEqual(parseRoute(chatPath(id)), { page: "chat", id });
   assert.deepEqual(parseRoute(`/chat/${id}/`), { page: "chat", id });

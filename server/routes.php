@@ -20,6 +20,6 @@ Route::get('/assets/{path:.+}', Asset::class);
 
 $frontend = Frontend::class;
 Route::get('/', $frontend);
-foreach (['/settings', '/chat/{id}', '/new/{id}', '/project/{id}', '/project/{id}/new', '/project/{projectId}/chat/{id}'] as $path) {
+foreach (['/settings', '/settings/{section}', '/settings/{section}/{item}', '/chat/{id}', '/new/{id}', '/project/{id}', '/project/{id}/new', '/project/{projectId}/chat/{id}'] as $path) {
     Route::get($path, $frontend);
 }

@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { Activity, ArrowLeft, Check, CircleCheck, CircleMinus, Download, Folder, LockKeyhole, Moon, Palette, Plus, Search, Sun, TriangleAlert, UserRound, Users } from "lucide-react";
+import { Activity, ArrowLeft, ChartColumn, Check, CircleCheck, CircleMinus, Download, Folder, LockKeyhole, Moon, Palette, Plus, Search, Sun, TriangleAlert, UserRound, Users } from "lucide-react";
 import type { Account, Project, Request } from "../types";
-import { ErrorNotice, Button, IconButton, Input } from "../components/ui";
+import { ErrorNotice, Button, ButtonLink, IconButton, Input } from "../components/ui";
 import { Avatar } from "../components/Avatar";
 import { useAuth } from "../components/AuthGate";
 import { useAttachments } from "../hooks/useAttachments";
@@ -9,15 +9,34 @@ import { AttachmentList } from "../components/AttachmentList";
 import { HealthPage } from "./HealthPage";
 import { ProjectSharingDialog } from "../components/ProjectSharingDialog";
 import { UpdatePage } from "./UpdatePage";
+import { UsagePage } from "./UsagePage";
+import { settingsPath, type SettingsSection } from "../lib/routes";
 
-export function SettingsPage({ theme, setTheme, request, projects, loaded, back }: {
+type Navigate = (path: string, replace?: boolean) => void;
+const personal = [{ id: "profile", label: "Profile", Icon: UserRound }, { id: "appearance", label: "Appearance", Icon: Palette }] as const;
+const admin = [{ id: "users", label: "Users", Icon: Users }, { id: "projects", label: "Projects", Icon: Folder }, { id: "usage", label: "Usage", Icon: ChartColumn },
+  { id: "health", label: "Health", Icon: Activity }, { id: "updates", label: "Updates", Icon: Download }] as const;
+
+export function SettingsPage({ section, item, navigate, live, theme, setTheme, request, projects, loaded, back }: {
+  section: SettingsSection; item?: string; navigate: Navigate; live: boolean;
   theme: string; setTheme: (theme: string) => void; request: Request; projects: Project[]; loaded: boolean; back: () => void;
 }) {
   const { user, refresh, logout } = useAuth();
-  const [page, setPage] = useState("profile");
   const [error, setError] = useState("");
   const [signingOut, setSigningOut] = useState(false);
-  const currentPage = user.avatar_required ? "profile" : page;
+  const adminSection = admin.some(entry => entry.id === section);
+  const forcedProfile = user.avatar_required || (adminSection && !user.admin);
+  // A photo is required before anything else, and admin pages are not for members: both land on Profile.
+  useEffect(() => { if (forcedProfile && section !== "profile") navigate(settingsPath(), true); }, [forcedProfile, section, navigate]);
+  const current = forcedProfile ? "profile" : section;
+  // Opening an admin page by URL renders before the WebSocket connects; its first request waits for the connection.
+  const connecting = !live && ["users", "usage", "health", "updates"].includes(current);
+  const link = ({ id, label, Icon }: typeof personal[number] | typeof admin[number]) => {
+    const disabled = user.avatar_required && id !== "profile";
+    return disabled
+      ? <Button key={id} variant="text" disabled><Icon size={16} aria-hidden="true" />{label}</Button>
+      : <ButtonLink key={id} variant="text" href={settingsPath(id)} navigate={navigate} aria-current={current === id ? "page" : undefined}><Icon size={16} aria-hidden="true" />{label}</ButtonLink>;
+  };
   return <div className="settings-page">
     <header className="settings-header">
       {!user.avatar_required && <IconButton label="Back to workspace" onClick={back}><ArrowLeft size={16} /></IconButton>}
@@ -32,21 +51,19 @@ export function SettingsPage({ theme, setTheme, request, projects, loaded, back 
     <ErrorNotice message={error} dismiss={() => setError("")} />
     <div className="settings-layout">
       <nav className="settings-nav" aria-label="Settings">
-        <Button variant="text" aria-current={currentPage === "profile" ? "page" : undefined} onClick={() => setPage("profile")}><UserRound size={16} aria-hidden="true" />Profile</Button>
-        <Button variant="text" disabled={user.avatar_required} aria-current={currentPage === "appearance" ? "page" : undefined} onClick={() => setPage("appearance")}><Palette size={16} aria-hidden="true" />Appearance</Button>
+        {personal.map(link)}
         {!!user.admin && !user.avatar_required && <div className="settings-admin-nav" role="group" aria-label="Administration">
           <span className="settings-group">Admin</span>
-          {[{ id: "users", label: "Users", Icon: Users }, { id: "projects", label: "Projects", Icon: Folder }, { id: "health", label: "Health", Icon: Activity }, { id: "updates", label: "Updates", Icon: Download }].map(({ id, label, Icon }) =>
-            <Button key={id} variant="text" aria-current={currentPage === id ? "page" : undefined} onClick={() => setPage(id)}><Icon size={16} aria-hidden="true" />{label}</Button>)}
+          {admin.map(link)}
         </div>}
       </nav>
       <div className="settings-content">
-        {currentPage === "profile" && <section className="settings-section" aria-labelledby="settings-profile-title">
+        {current === "profile" && <section className="settings-section" aria-labelledby="settings-profile-title">
           <header className="settings-section-header"><h2 id="settings-profile-title">Profile</h2></header>
           <AvatarUpload request={request} />
           <AccountForm account={user} save={async data => { await request("profileSave", data); await refresh(); }} />
         </section>}
-        {currentPage === "appearance" && <section className="settings-section" aria-labelledby="settings-appearance-title">
+        {current === "appearance" && <section className="settings-section" aria-labelledby="settings-appearance-title">
           <header className="settings-section-header"><div><h2 id="settings-appearance-title">Appearance</h2><p>Choose a theme for this device.</p></div></header>
           <div className="theme-options" role="group" aria-label="Color theme">
             {["light", "dark"].map(value => <Button key={value} aria-pressed={theme === value} onClick={() => setTheme(value)}>
@@ -55,10 +72,12 @@ export function SettingsPage({ theme, setTheme, request, projects, loaded, back 
             </Button>)}
           </div>
         </section>}
-        {currentPage === "users" && !!user.admin && <UserManagement request={request} />}
-        {currentPage === "projects" && !!user.admin && <ProjectSettings projects={projects} loaded={loaded} request={request} />}
-        {currentPage === "health" && !!user.admin && <HealthPage request={request} />}
-        {currentPage === "updates" && !!user.admin && <UpdatePage request={request} />}
+        {connecting && <p className="settings-empty" role="status">Connecting to workspace…</p>}
+        {current === "users" && !connecting && <UserManagement request={request} item={item} navigate={navigate} />}
+        {current === "projects" && <ProjectSettings projects={projects} loaded={loaded} request={request} item={item} navigate={navigate} />}
+        {current === "usage" && !connecting && <UsagePage request={request} />}
+        {current === "health" && !connecting && <HealthPage request={request} />}
+        {current === "updates" && !connecting && <UpdatePage request={request} />}
       </div>
     </div>
   </div>;
@@ -164,11 +183,10 @@ function AccountForm({ account, admin = false, save, cancel }: {
   </form>;
 }
 
-function UserManagement({ request }: { request: Request }) {
+function UserManagement({ request, item, navigate }: { request: Request; item?: string; navigate: Navigate }) {
   const [users, setUsers] = useState<Account[]>([]);
   const [oauth, setOauth] = useState<{ configured: boolean; existing_only: boolean }>();
   const [savingOauth, setSavingOauth] = useState(false);
-  const [editing, setEditing] = useState<Account | "new" | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
@@ -182,11 +200,18 @@ function UserManagement({ request }: { request: Request }) {
       .finally(() => { if (!stale) setLoading(false); });
     return () => { stale = true; };
   }, [request, version]);
-  if (editing) return <AccountForm key={editing === "new" ? "new" : editing.id} admin
-    account={editing === "new" ? undefined : editing} cancel={() => setEditing(null)} save={async data => {
+  const editing = item === "new" ? "new" : users.find(user => user.id === item);
+  const list = () => navigate(settingsPath("users"));
+  if (item && editing) return <AccountForm key={editing === "new" ? "new" : editing.id} admin
+    account={editing === "new" ? undefined : editing} cancel={list} save={async data => {
       await request(editing === "new" ? "userCreate" : "userUpdate", data);
-      setEditing(null); setVersion(value => value + 1);
+      list(); setVersion(value => value + 1);
     }} />;
+  if (item) return <section className="settings-section" aria-label="User">
+    <ErrorNotice message={error} />
+    <p className="settings-empty" role="status">{loading ? "Loading user…" : error ? "" : "This user does not exist."}</p>
+    <div className="settings-inline-actions"><ButtonLink href={settingsPath("users")} navigate={navigate}>Back to users</ButtonLink></div>
+  </section>;
   async function toggleExistingOnly(existingOnly: boolean) {
     setSavingOauth(true); setError("");
     try { setOauth(await request<{ configured: boolean; existing_only: boolean }>("oauthSettingsSave", { existing_only: existingOnly })); }
@@ -195,7 +220,7 @@ function UserManagement({ request }: { request: Request }) {
   }
   const visible = users.filter(user => `${user.name} ${user.email}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
   return <section className="settings-section" aria-labelledby="settings-users-title">
-    <header className="settings-section-header"><div><h2 id="settings-users-title">Users</h2><p>Manage accounts and workspace access.</p></div><Button variant="primary" onClick={() => setEditing("new")}><Plus size={16} aria-hidden="true" />Add user</Button></header>
+    <header className="settings-section-header"><div><h2 id="settings-users-title">Users</h2><p>Manage accounts and workspace access.</p></div><ButtonLink variant="primary" href={settingsPath("users", "new")} navigate={navigate}><Plus size={16} aria-hidden="true" />Add user</ButtonLink></header>
     <div className="settings-toolbar">
       <div className="settings-search"><Search size={16} aria-hidden="true" /><Input type="search" aria-label="Search users" placeholder="Search by name or email…" value={query} onChange={event => setQuery(event.target.value)} /></div>
       {!loading && !error && <span className="settings-hint" role="status">{query.trim() ? `${visible.length} of ${users.length}` : users.length} {users.length === 1 ? "user" : "users"}</span>}
@@ -217,7 +242,7 @@ function UserManagement({ request }: { request: Request }) {
           <td className="settings-table-meta"><span>{user.admin ? "Admin" : "Member"}</span><small className="settings-status" data-status={user.enabled ? "ok" : "idle"}>
             {user.enabled ? <CircleCheck size={14} aria-hidden="true" /> : <CircleMinus size={14} aria-hidden="true" />}{user.enabled ? "Active" : "Disabled"}
           </small></td>
-          <td className="settings-table-action"><Button aria-label={`Edit ${user.name}`} onClick={() => setEditing(user)}>Edit</Button></td>
+          <td className="settings-table-action"><ButtonLink aria-label={`Edit ${user.name}`} href={settingsPath("users", user.id)} navigate={navigate}>Edit</ButtonLink></td>
         </tr>)}</tbody>
       </table>}
       {!visible.length && !error && <p className="settings-empty" role="status">{query.trim() ? "No users match your search." : "No users yet."}</p>}
@@ -225,10 +250,10 @@ function UserManagement({ request }: { request: Request }) {
   </section>;
 }
 
-function ProjectSettings({ projects, loaded, request }: { projects: Project[]; loaded: boolean; request: Request }) {
+function ProjectSettings({ projects, loaded, request, item, navigate }: { projects: Project[]; loaded: boolean; request: Request; item?: string; navigate: Navigate }) {
   const [query, setQuery] = useState("");
-  const [sharing, setSharing] = useState<Project | null>(null);
   const roots = projects.filter(project => !project.parent_id);
+  const sharing = item ? roots.find(project => project.id === item) : undefined;
   const visible = roots.filter(project => project.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
   return <section className="settings-section" aria-labelledby="settings-projects-title">
     <header className="settings-section-header"><div><h2 id="settings-projects-title">Projects</h2><p>Control who can access each project. Worktrees inherit access.</p></div></header>
@@ -242,11 +267,12 @@ function ProjectSettings({ projects, loaded, request }: { projects: Project[]; l
         <tbody>{visible.map(project => <tr key={project.id}>
           <td className="settings-table-identity"><div className="settings-row-copy"><strong>{project.name}</strong><small className="settings-project-path" title={project.path}>{project.path}</small>{!!project.archived && <small>Archived</small>}</div></td>
           <td className="settings-table-meta"><span className="settings-status">{project.visibility === "public" ? <Users size={14} aria-hidden="true" /> : <LockKeyhole size={14} aria-hidden="true" />}{project.visibility === "public" ? "Public" : "Private"}</span><small>{project.visibility === "public" ? "All signed-in users" : "Invited members"}</small></td>
-          <td className="settings-table-action"><Button aria-label={`Sharing for ${project.name}`} onClick={() => setSharing(project)}>Sharing</Button></td>
+          <td className="settings-table-action"><ButtonLink aria-label={`Sharing for ${project.name}`} href={settingsPath("projects", project.id)} navigate={navigate}>Sharing</ButtonLink></td>
         </tr>)}</tbody>
       </table>}
       {!visible.length && <p className="settings-empty" role="status">{query.trim() ? "No projects match your search." : "No projects yet. Add a project from the workspace."}</p>}
     </>}
-    {sharing && <ProjectSharingDialog project={sharing} request={request} close={() => setSharing(null)} />}
+    {loaded && item && !sharing && <ErrorNotice message="This project does not exist or is a worktree. Worktrees share their original project’s access." dismiss={() => navigate(settingsPath("projects"))} />}
+    {sharing && <ProjectSharingDialog project={sharing} request={request} close={() => navigate(settingsPath("projects"))} />}
   </section>;
 }
