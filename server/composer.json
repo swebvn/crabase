@@ -10,22 +10,16 @@
   "description": "CrabPHP backend for the Crabase shared coding workspace.",
   "require": {
     "php": ">=8.4",
-    "crabphp/framework": "^0.4"
+    "crabphp/framework": "^0.6"
   },
-  "repositories": [
-    {
-      "type": "vcs",
-      "url": "https://github.com/crabphp/framework"
-    }
-  ],
   "autoload": {
     "psr-4": {
       "app\\": "./app/",
       "App\\": "./app/"
     },
-    "files": ["app/functions.php"]
+    "files": [
+      "app/functions.php"
+    ]
   },
-  "minimum-stability": "dev",
-  "prefer-stable": true,
   "config": {}
 }
