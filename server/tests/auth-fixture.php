@@ -1,7 +1,7 @@
 <?php
 // Disposable credentials for the live smoke test; never printed except to its parent process.
 require dirname(__DIR__).'/vendor/autoload.php';
-use app\service\{Auth, Store};
+use App\Service\{Auth, Store};
 if (($argv[1] ?? '') === 'cleanup') {
     foreach (array_slice($argv,2) as $id) {
         Store::run('DELETE FROM auth_sessions WHERE user_id=?',[$id],false);

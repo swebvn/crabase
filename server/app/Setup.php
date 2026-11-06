@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace app;
+namespace App;
 
-use app\service\Store;
+use App\Service\Store;
 use Crab\Contracts\Container\Container;
 use Crab\Contracts\Plugin;
 use Crab\Database\DatabaseManager;

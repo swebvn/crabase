@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 require dirname(__DIR__) . '/vendor/autoload.php';
 
-use app\service\Updater;
+use App\Service\Updater;
 
 $storage = dirname(__DIR__) . '/storage';
 $fail = static fn (string $message) => throw new RuntimeException($message);

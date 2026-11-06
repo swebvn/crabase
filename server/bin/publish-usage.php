@@ -9,8 +9,8 @@ require dirname(__DIR__) . '/config/crabase.php';
 
 $lock = fopen(dirname(__DIR__) . '/runtime/logs/usage.lock', 'c');
 if (!$lock || !flock($lock, LOCK_EX | LOCK_NB)) exit(0);
-app\service\Store::db();
-$result = app\service\TokenUsage::publishDue();
+App\Service\Store::db();
+$result = App\Service\TokenUsage::publishDue();
 if ($result['retry'] || $result['failed']) {
     fwrite(STDERR, gmdate('c') . ' token usage: ' . json_encode($result) . "\n");
 }

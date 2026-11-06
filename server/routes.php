@@ -2,8 +2,8 @@
 
 declare(strict_types=1);
 
-use app\action\{Artifact, Asset, AuthLogin, AuthLogout, AuthSession, Avatar, Frontend, OAuthCallback, OAuthStart};
-use app\middleware\{BrowserRequest, CookieAuth, ProjectFileAccess};
+use App\Actions\{Artifact, Asset, AuthLogin, AuthLogout, AuthSession, Avatar, Frontend, OAuthCallback, OAuthStart};
+use App\Http\{BrowserRequest, CookieAuth, ProjectFileAccess};
 use Crab\Route;
 
 Route::get('/auth/session', AuthSession::class)

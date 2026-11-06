@@ -1,7 +1,7 @@
 <?php
 require dirname(__DIR__).'/vendor/autoload.php';
-use app\service\Store;
-use app\service\Actions;
+use App\Service\Store;
+use App\Service\Actions;
 
 $directory = sys_get_temp_dir().'/crabase-parallel-'.bin2hex(random_bytes(8));
 mkdir($directory, 0700);
@@ -9,7 +9,7 @@ putenv('CRABASE_DB='.$directory.'/test.sqlite');
 putenv('CRABASE_WORKSPACE_ROOT='.$directory);
 putenv('CRABASE_PARALLEL_CHATS=2');
 putenv('CODEX_BIN='.__DIR__.'/fake_codex.php');
-$worker = new app\process\Codex();
+$worker = new App\Process\Codex();
 $tick = new ReflectionMethod($worker,'tick');
 $rpc = new ReflectionMethod($worker,'rpc');
 function parallelCheck(bool $ok): void { if (!$ok) throw new RuntimeException('Parallel chat check failed'); }

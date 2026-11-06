@@ -1,7 +1,7 @@
 <?php
 require dirname(__DIR__).'/vendor/autoload.php';
-use app\service\AgentActivity as Activity;
-use app\service\Store;
+use App\Service\AgentActivity as Activity;
+use App\Service\Store;
 
 function activityCheck(bool $ok): void { if (!$ok) throw new RuntimeException('Agent activity check failed'); }
 $path = tempnam(sys_get_temp_dir(), 'crabase-agents-');
@@ -10,10 +10,10 @@ try {
     $process = proc_open([PHP_BINARY, dirname(__DIR__).'/cua', 'migrate'], [0=>['file','/dev/null','r'],1=>['file','/dev/null','w'],2=>STDERR], $pipes);
     activityCheck(is_resource($process) && proc_close($process) === 0);
     Store::db();
-    $chat = app\service\Actions::handle('create', ['title'=>'Activity test'])['id'];
+    $chat = App\Service\Actions::handle('create', ['title'=>'Activity test'])['id'];
     Store::run('INSERT INTO jobs (chat_id,prompt,status) VALUES (?,?,?)', [$chat,'Test','running']);
     $job = Store::all('SELECT * FROM jobs LIMIT 1')[0];
-    $worker = new app\process\Codex();
+    $worker = new App\Process\Codex();
     (new ReflectionProperty($worker,'jobs'))->setValue($worker, [(int)$job['id']=>$job+['thread_id'=>'parent','items'=>[], 'approvals'=>[], 'activity'=>[]]]);
     $receive = new ReflectionMethod($worker,'receive');
     $item = ['type'=>'collabAgentToolCall','id'=>'spawn-call','tool'=>'spawnAgent','status'=>'inProgress','senderThreadId'=>'parent','receiverThreadIds'=>[], 'agentsStates'=>[], 'prompt'=>'Review backend'];

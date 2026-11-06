@@ -1,6 +1,6 @@
 <?php
 require dirname(__DIR__).'/vendor/autoload.php';
-use app\service\{Actions, Auth, Store};
+use App\Service\{Actions, Auth, Store};
 use Crab\Engine\EventLoop;
 use Crab\Engine\Http\Request;
 use Crab\Engine\Network\Connection;
@@ -97,7 +97,7 @@ try {
     $process = proc_open([PHP_BINARY, dirname(__DIR__).'/cua', 'migrate'], [0=>['file','/dev/null','r'],1=>['file','/dev/null','w'],2=>STDERR], $pipes);
     presenceCheck(is_resource($process) && proc_close($process) === 0, 'migrate');
     Store::db();
-    $worker = new app\process\Codex();
+    $worker = new App\Process\Codex();
     $connect = function (string $name) use ($worker): RecordingSession {
         $user = Auth::create(['name'=>$name, 'email'=>$name.'@example.com', 'password'=>bin2hex(random_bytes(16))]);
         $connection = new RecordingSession();
@@ -156,6 +156,20 @@ try {
     presenceCheck($running() === null, 'idle chat has no requester');
     Store::run("INSERT INTO jobs (chat_id,prompt,status,message_id) VALUES (?,?,'running',?)", [$chat, 'Fix it', $message]);
     presenceCheck($running() === 'bob', 'running chat names the requester');
+
+    // Patches diff only the history a client loaded: a paged long thread must not be re-sent on the next revision.
+    $long = Actions::handle('create', ['title'=>'Long'])['id'];
+    $note = fn (string $body) => Actions::handle('message', ['chat_id'=>$long, 'body'=>$body, 'mode'=>'note', 'user_id'=>$bobId]);
+    foreach (['m1','m2','m3','m4','m5'] as $body) $note($body);
+    $page = $call($bob, 'sync', ['chat_id'=>$long, 'limit'=>2])['result']['thread'];
+    presenceCheck(array_column($page['messages'], 'body') === ['m4','m5'], 'first page is the latest messages');
+    $note('m6');
+    $call($bob, 'profile');
+    presenceCheck(array_column($bob->last('patch')['messages'] ?? [], 'body') === ['m6'], 'patch sends only the new message');
+    $call($bob, 'sync', ['chat_id'=>$long, 'before'=>(int)$page['messages'][0]['id'], 'limit'=>2]);
+    $note('m7');
+    $call($bob, 'profile');
+    presenceCheck(array_column($bob->last('patch')['messages'] ?? [], 'body') === ['m7'], 'loading older history keeps later messages diffed');
     echo "PASS: chat viewers, typing start/refresh/stop, validation, chat switches, disconnects and running-request owner.\n";
 } finally {
     if (isset($ada)) $ada->close();

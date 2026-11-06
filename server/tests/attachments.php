@@ -1,6 +1,6 @@
 <?php
 require dirname(__DIR__).'/vendor/autoload.php';
-use app\service\{Store as S, Actions as A, Attachments as U, Artifacts};
+use App\Service\{Store as S, Actions as A, Attachments as U, Artifacts};
 $root = sys_get_temp_dir().'/crabase-uploads-'.bin2hex(random_bytes(8));
 mkdir($root, 0700);
 putenv('CRABASE_DB='.$root.'/test.sqlite');
@@ -59,8 +59,8 @@ try {
     rejected(fn () => A::handle('avatarSave', ['user_id'=>'other','id'=>$avatar]));
     $result = A::handle('avatarSave', ['user_id'=>'uploader','id'=>$avatar]);
     attachmentCheck(S::connection()->table('users')->where('id', 'uploader')->value('avatar_url') === $result['avatar_url']);
-    attachmentCheck(file_get_contents(\app\service\Avatars::resolve(basename($result['avatar_url']))) === $png);
-    attachmentCheck(\app\service\Avatars::resolve('../test.sqlite') === null);
+    attachmentCheck(file_get_contents(\App\Service\Avatars::resolve(basename($result['avatar_url']))) === $png);
+    attachmentCheck(\App\Service\Avatars::resolve('../test.sqlite') === null);
     rejected(fn () => A::handle('avatarSave', ['user_id'=>'uploader','id'=>$avatar]));
     $text = $start('not-image.txt', 5)['id'];
     A::handle('uploadChunk', ['user_id'=>'uploader','id'=>$text,'offset'=>0,'bytes'=>base64_encode('hello')]);

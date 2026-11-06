@@ -297,9 +297,15 @@ web/src/styles/tokens.css   Design tokens for both themes
 web/src/style.css          Component layouts and states
 web/tests/                 Native Node frontend checks
 design.md                  Crabase design system
-server/app/service/Actions.php  Validated WebSocket commands
-server/app/service/Store.php    Connection setup, validation, snapshots and revision notifications
-server/app/process/Codex.php    Codex lifecycle, queue, events, WebSocket updates
+server/app/Actions/         HTTP route actions (auth, assets, artifacts, avatars)
+server/app/Http/            HTTP middleware
+server/app/Service/Actions.php  WebSocket command authorization and routing
+server/app/Service/{Projects,Chats}.php  Project and chat operations
+server/app/Service/Store.php    Connection setup, validation, snapshots and revision notifications
+server/app/Process/Codex.php    Codex app-server lifecycle, agent queue, WebSocket request routing
+server/app/Process/WorkspaceClients.php  Connected tabs, presence and patch pushes
+server/app/Process/TerminalHost.php      Browser terminals over the Node PTY host
+server/bin/action.php      Runs Git-backed actions outside the worker's event loop
 server/runtime/            Local data and logs (ignored)
 ```
 
@@ -368,7 +374,7 @@ The first Crab migration adopts an existing Phinx ledger when present, preservin
 
 ### Models and users
 
-`server/app/model/` contains application-owned records backed by CrabPHP's query builder for users, accounts, sessions, projects, chats, messages, jobs, approvals, events, settings and pending uploads. Relations are explicit query methods, and JSON/boolean casts plus hidden credential fields are mapped by the record wrapper. `Actions` validates input and coordinates model operations; CrabPHP owns migrations. `config/database.php` uses SQLite with foreign keys and one Crab connection pool. The Codex worker uses models, with per-chat FIFO selection owned by `Job::nextQueued` and atomic streaming owned by `Message::appendBody`. Visible writes explicitly bump the revision through `Store::notify`; bulk model updates do not emit model events. Revisions and writes share the same transaction. Authentication/session/upload bookkeeping stays silent. Bound SQL remains for atomic message appends, revision/throttle increments and one-use OAuth state consumption; short-lived/composite-key OAuth bookkeeping uses the query builder. `Store::all/run` remain for existing test/operator scripts, not application CRUD.
+`server/app/Record/` contains application-owned records backed by CrabPHP's query builder for users, accounts, sessions, projects, chats, messages, jobs, approvals, events, settings and pending uploads. Relations are explicit query methods, and JSON/boolean casts plus hidden credential fields are mapped by the record wrapper. `Actions` validates input and coordinates model operations; CrabPHP owns migrations. `config/database.php` uses SQLite with foreign keys and one Crab connection pool. The Codex worker uses models, with per-chat FIFO selection owned by `Job::nextQueued` and atomic streaming owned by `Message::appendBody`. Visible writes explicitly bump the revision through `Store::notify`; bulk model updates do not emit model events. Revisions and writes share the same transaction. Authentication/session/upload bookkeeping stays silent. Bound SQL remains for atomic message appends, revision/throttle increments and one-use OAuth state consumption; short-lived/composite-key OAuth bookkeeping uses the query builder. `Store::all/run` remain for existing test/operator scripts, not application CRUD.
 
 Users persist in SQLite with stable IDs, names, avatar URLs, and creation timestamps. Existing human message authors are backfilled into `messages.user_id`. The WebSocket boundary derives message identity from the authenticated session and ignores client `user_id`. Accounts contain private login and optional Git identity fields; workspace snapshots expose only public display identity. Optional TDA Passport OAuth2 links existing accounts or creates regular users on first login. Project visibility and membership are enforced through `ProjectAccess`; do not expose the service publicly without OS isolation.
 

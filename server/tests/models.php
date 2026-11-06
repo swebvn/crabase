@@ -1,9 +1,9 @@
 <?php
 require dirname(__DIR__) . '/vendor/autoload.php';
-use app\service\Store as S;
-use app\service\Actions as A;
-use app\service\ModelCatalog;
-use app\record\{Chat, User, Message, Project};
+use App\Service\Store as S;
+use App\Service\Actions as A;
+use App\Service\ModelCatalog;
+use App\Record\{Chat, User, Message, Project};
 $path = tempnam(sys_get_temp_dir(), 'crabase-models-');
 putenv('CRABASE_DB='.$path);
 function check(bool $ok): void { if (!$ok) throw new RuntimeException('Model selection check failed.'); }
@@ -25,7 +25,7 @@ try {
     $chat = A::handle('create', ['title'=>'Queue options'])['id'];
     foreach (['high','low'] as $effort) A::handle('message', ['chat_id'=>$chat,'body'=>'test','user_id'=>$users['user1'],'mode'=>'agent','model'=>'test-model','effort'=>$effort]);
     check(S::all('SELECT model,effort FROM jobs ORDER BY id') === [['model'=>'test-model','effort'=>'high'],['model'=>'test-model','effort'=>'low']]);
-    check(A::agentOptions(['model'=>'test-model']) === ['model'=>'test-model','effort'=>'low']);
+    check(App\Service\ModelCatalog::options(['model'=>'test-model']) === ['model'=>'test-model','effort'=>'low']);
     foreach ([['model'=>'missing'],['model'=>'test-model','effort'=>'invalid'],['effort'=>'low']] as $bad) {
         try { A::handle('message',array_merge(['chat_id'=>$chat,'body'=>'invalid','mode'=>'agent'],$bad)); throw new RuntimeException('Invalid settings accepted'); }
         catch (InvalidArgumentException) {}
@@ -70,12 +70,9 @@ try {
     check(S::connection()->table('messages')->where('user_id', $user->id)->where('chat_id', $chat)->count() === 2);
     check(S::connection()->table('jobs')->where('chat_id', $chat)->count() === 2);
     check(S::connection()->table('messages')->where('chat_id', $chat)->where('user_id', $user->id)->exists());
-    A::handle('userAvatar', ['user_id'=>$user->id,'avatar_url'=>'https://example.com/avatar.png']);
-    check(S::connection()->table('users')->where('id', $user->id)->value('avatar_url') === 'https://example.com/avatar.png');
-    foreach ([['user_id'=>'missing','avatar_url'=>'https://example.com/a.png'], ['user_id'=>$user->id,'avatar_url'=>'javascript:alert(1)']] as $bad) {
-        try { A::handle('userAvatar', $bad); throw new RuntimeException('Invalid profile accepted'); } catch (InvalidArgumentException) {}
-    }
+    try { A::handle('userAvatar', ['user_id'=>$user->id,'avatar_url'=>'https://example.com/a.png']); throw new RuntimeException('Avatar URL action accepted'); } catch (InvalidArgumentException) {}
     try { A::handle('message', ['chat_id'=>$chat,'body'=>'spoof','user_id'=>'missing']); throw new RuntimeException('Unknown user accepted'); } catch (InvalidArgumentException) {}
+    $avatar = S::connection()->table('users')->where('id', $user->id)->value('avatar_url');
     try {
         S::transaction(function () use ($user) {
             S::connection()->table('users')->where('id', $user->id)->update(['avatar_url'=>'https://example.com/rollback.png']);
@@ -83,19 +80,19 @@ try {
             throw new RuntimeException('rollback test');
         });
     } catch (RuntimeException) {}
-    check(S::connection()->table('users')->where('id', $user->id)->value('name') === 'user1' && S::connection()->table('users')->where('id', $user->id)->value('avatar_url') === 'https://example.com/avatar.png');
+    check(S::connection()->table('users')->where('id', $user->id)->value('name') === 'user1' && S::connection()->table('users')->where('id', $user->id)->value('avatar_url') === $avatar);
     $revision = fn () => (int)S::connection()->table('settings')->where('key', 'revision')->value('value');
     $before = $revision();
     S::notify(S::connection()->table('messages')->where('id', -1)->update(['body'=>'missing']));
     check($revision() === $before);
     $message = S::connection()->table('messages')->into(Message::class)->where('chat_id', $chat)->first();
     $original = $message->body;
-    \app\service\MessageBody::append($message->id, "'quoted' \nΔ");
+    \App\Service\MessageBody::append($message->id, "'quoted' \nΔ");
     check(S::connection()->table('messages')->where('id', $message->id)->value('body') === $original."'quoted' \nΔ" && $revision() === $before + 1);
     $before = $revision();
     try {
         S::transaction(function () use ($message) {
-            \app\service\MessageBody::append($message->id, 'rolled back');
+            \App\Service\MessageBody::append($message->id, 'rolled back');
             S::notify(S::connection()->table('settings')->upsert([['key'=>'rollback-test', 'value'=>'value']], ['key'], ['value']));
             throw new RuntimeException('rollback');
         });
@@ -145,8 +142,8 @@ try {
     $models[0]['supportedReasoningEfforts'][] = ['reasoningEffort'=>'ultra'];
     $models[0]['defaultReasoningEffort'] = 'ultra';
     ModelCatalog::replace($models);
-    check(A::agentOptions(['model'=>'test-model'])['effort'] === 'low');
-    try { A::agentOptions(['model'=>'test-model','effort'=>'ultra']); throw new RuntimeException('Ultra accepted'); }
+    check(App\Service\ModelCatalog::options(['model'=>'test-model'])['effort'] === 'low');
+    try { App\Service\ModelCatalog::options(['model'=>'test-model','effort'=>'ultra']); throw new RuntimeException('Ultra accepted'); }
     catch (InvalidArgumentException) {}
     echo "PASS: model/effort validation, defaults, immutable queued selections, and rejection before saving.\n";
 } finally {

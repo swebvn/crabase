@@ -1,6 +1,6 @@
 <?php
 require dirname(__DIR__).'/vendor/autoload.php';
-use app\service\{ProjectWorkspace as W, Store as S};
+use App\Service\{ProjectWorkspace as W, Store as S};
 
 $root = sys_get_temp_dir().'/crabase-code-'.bin2hex(random_bytes(8));
 $db = tempnam(sys_get_temp_dir(), 'crabase-code-db-');

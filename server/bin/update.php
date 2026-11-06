@@ -4,7 +4,7 @@
 declare(strict_types=1);
 
 require dirname(__DIR__) . '/vendor/autoload.php';
-use app\service\Updater;
+use App\Service\Updater;
 
 $root=dirname(__DIR__,2); $tag='';
 foreach (array_slice($argv,1) as $argument) if (str_starts_with($argument,'--tag=')) $tag=substr($argument,6);

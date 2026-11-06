@@ -168,7 +168,7 @@ if __name__=='__main__':
     with tempfile.TemporaryDirectory(prefix='crabase-delete-') as temp:
         project_id=uuid.uuid4().hex[:16]
         keep=Path(temp)/'keep.txt'; keep.write_text('keep')
-        subprocess.run(['php','-r',"require 'vendor/autoload.php'; app\\service\\Store::run('INSERT INTO projects (id,name,path) VALUES (?,?,?)', [$argv[1],'Delete check',$argv[2]]);",project_id,temp],cwd=server,check=True)
+        subprocess.run(['php','-r',"require 'vendor/autoload.php'; App\\Service\\Store::run('INSERT INTO projects (id,name,path) VALUES (?,?,?)', [$argv[1],'Delete check',$argv[2]]);",project_id,temp],cwd=server,check=True)
         owned=first.call('create',{'project_id':project_id})['id']
         first.call('message',{'chat_id':owned,'body':'Delete fixture','mode':'note'})
         assert first.call('projectSharing',{'project_id':project_id}) == {'visibility':'private','members':[]}
@@ -194,7 +194,7 @@ if __name__=='__main__':
         assert second.call('sync',{'chat_id':owned})['thread']['messages'][0]['body']=='Delete fixture'
         # Child workspaces inherit both grants and revocation from the original project.
         child=uuid.uuid4().hex[:16]
-        subprocess.run(['php','-r',"require 'vendor/autoload.php'; app\\service\\Store::connection()->table('projects')->insert(['id'=>$argv[1],'name'=>'Child','path'=>$argv[2], 'parent_id'=>$argv[3]]); app\\service\\Store::notify();",child,temp+'/child',project_id],cwd=server,check=True)
+        subprocess.run(['php','-r',"require 'vendor/autoload.php'; App\\Service\\Store::connection()->table('projects')->insert(['id'=>$argv[1],'name'=>'Child','path'=>$argv[2], 'parent_id'=>$argv[3]]); App\\Service\\Store::notify();",child,temp+'/child',project_id],cwd=server,check=True)
         child_chat=first.call('create',{'project_id':child})['id']
         assert second.call('sync',{'chat_id':child_chat})['thread']['chat']['project_id']==child
         second.events.clear()
@@ -211,7 +211,7 @@ if __name__=='__main__':
         first.call('projectSharingSave',{'project_id':project_id,'visibility':'public','members':[]})
         assert second.call('sync',{'chat_id':child_chat})['thread']['chat']['project_id']==child
         second.call('projectSharingSave',{'project_id':project_id,'visibility':'private','members':[]},error=True)
-        subprocess.run(['php','-r',"require 'vendor/autoload.php'; $db=app\\service\\Store::connection(); $db->table('events')->where('chat_id',$argv[1])->delete(); $db->table('chats')->where('id',$argv[1])->delete(); $db->table('projects')->where('id',$argv[2])->delete(); app\\service\\Store::notify();",child_chat,child],cwd=server,check=True)
+        subprocess.run(['php','-r',"require 'vendor/autoload.php'; $db=App\\Service\\Store::connection(); $db->table('events')->where('chat_id',$argv[1])->delete(); $db->table('chats')->where('id',$argv[1])->delete(); $db->table('projects')->where('id',$argv[2])->delete(); App\\Service\\Store::notify();",child_chat,child],cwd=server,check=True)
         second.call('sync',{'chat_id':owned})
         second.call('projectArchive',{'project_id':project_id,'archived':True},error=True)
         second.call('projectDelete',{'project_id':project_id},error=True)
@@ -294,7 +294,7 @@ if __name__=='__main__':
         assert update['messages'][0]['author']==accounts[0]['name'], 'Client-supplied identity was trusted'
         message_id=update['messages'][0]['id']
         # Use the same Store append as Codex, targeting only our disposable test note.
-        subprocess.run(['php','-r',"require 'vendor/autoload.php'; app\\service\\Store::run('UPDATE messages SET body=body || ? WHERE id=?', [' streamed', (int)$argv[1]]);",str(message_id)],cwd=Path(__file__).resolve().parents[1],check=True)
+        subprocess.run(['php','-r',"require 'vendor/autoload.php'; App\\Service\\Store::run('UPDATE messages SET body=body || ? WHERE id=?', [' streamed', (int)$argv[1]]);",str(message_id)],cwd=Path(__file__).resolve().parents[1],check=True)
         delta=second.patch('append');assert delta['append']==[{'id':message_id,'delta':' streamed'}]
         assert 'messages' not in delta and 'state' not in delta,'Delta resent history or workspace'
         second.close();second=Client(cookie=cookies[1]);restored=second.call('sync',{'chat_id':chat})['thread']
@@ -311,7 +311,7 @@ if __name__=='__main__':
             source=Path(temp)/'report.csv'; source.write_text('name,value\ntest,1\n')
             server=Path(__file__).resolve().parents[1]
             published=json.loads(subprocess.check_output(['php','bin/publish-artifact.php',chat,str(source)],cwd=server))
-            artifact_root=Path(subprocess.check_output(['php','-r',"require 'vendor/autoload.php'; echo app\\service\\Artifacts::root();"],cwd=server).decode())
+            artifact_root=Path(subprocess.check_output(['php','-r',"require 'vendor/autoload.php'; echo App\\Service\\Artifacts::root();"],cwd=server).decode())
             try:
                 files=second.patch('artifacts')['artifacts']
                 assert len(files)==1 and files[0]['url']==published['url']

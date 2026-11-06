@@ -1,6 +1,6 @@
 <?php
 require dirname(__DIR__).'/vendor/autoload.php';
-use app\service\WorkspaceFolders as F;
+use App\Service\WorkspaceFolders as F;
 
 $root = sys_get_temp_dir().'/crabase-folders-'.bin2hex(random_bytes(8));
 mkdir($root, 0700);

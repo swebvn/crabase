@@ -2,7 +2,7 @@
 // Per-user token usage: credited to the person driving the turn (including steering and sub-agents),
 // deduplicated per model call, and sent to a fake Console Event Relay with retries.
 require dirname(__DIR__).'/vendor/autoload.php';
-use app\service\{Actions, Auth, Store, TokenUsage};
+use App\Service\{Actions, Auth, Store, TokenUsage};
 
 $directory = sys_get_temp_dir().'/crabase-usage-'.bin2hex(random_bytes(8));
 mkdir($directory, 0700);
@@ -25,7 +25,7 @@ putenv("CRABASE_USAGE_RELAY_URL=http://127.0.0.1:$port/event-relay/crabase/event
 putenv('CRABASE_USAGE_RELAY_TOKEN=');
 
 function usageCheck(bool $ok, string $what): void { if (!$ok) throw new RuntimeException('Token usage check failed: '.$what); }
-$worker = new app\process\Codex();
+$worker = new App\Process\Codex();
 $tick = new ReflectionMethod($worker, 'tick');
 $rpc = new ReflectionMethod($worker, 'rpc');
 $jobs = new ReflectionProperty($worker, 'jobs');

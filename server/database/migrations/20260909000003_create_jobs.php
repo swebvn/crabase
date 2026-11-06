@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 use Crab\Contracts\Database\Migration;
 use Crab\Contracts\Database\Schema;
-use app\service\MigrationSchema;
+use App\Service\MigrationSchema;
 
 return new class implements Migration
 {

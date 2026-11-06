@@ -14,12 +14,8 @@
   },
   "autoload": {
     "psr-4": {
-      "app\\": "./app/",
       "App\\": "./app/"
-    },
-    "files": [
-      "app/functions.php"
-    ]
+    }
   },
   "config": {}
 }

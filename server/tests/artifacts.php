@@ -1,6 +1,6 @@
 <?php
 require dirname(__DIR__).'/vendor/autoload.php';
-use app\service\Artifacts as A;
+use App\Service\Artifacts as A;
 $root = sys_get_temp_dir().'/crabase-artifacts-'.bin2hex(random_bytes(8));
 mkdir($root, 0700);
 putenv('CRABASE_WORKSPACE_ROOT='.$root);

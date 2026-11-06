@@ -1,6 +1,6 @@
 <?php
 require dirname(__DIR__).'/vendor/autoload.php';
-use app\service\{Actions, ProjectWorkspace, WorkspaceFolders, Store};
+use App\Service\{Actions, ProjectWorkspace, WorkspaceFolders, Store};
 
 $root = sys_get_temp_dir().'/crabase-worktrees-'.bin2hex(random_bytes(8));
 mkdir($root, 0700); mkdir($root.'/repo');
@@ -29,8 +29,8 @@ try {
     $project = Store::connection()->table('projects')->where('id', $id)->first();
     $path = ProjectWorkspace::workspacePath($project);
     worktreeCheck(dirname($path) === $root.'/.worktrees/repo' && preg_match('/^[a-z]+-[a-z]+$/D', basename($path)) && $project['parent_id'] === $parent);
-    worktreeCheck(app\service\Worktrees::projectFolder('daudau.cc') === 'daudau.cc');
-    worktreeCheck(app\service\Worktrees::projectFolder('../My Project/') === 'my-project');
+    worktreeCheck(App\Service\Worktrees::projectFolder('daudau.cc') === 'daudau.cc');
+    worktreeCheck(App\Service\Worktrees::projectFolder('../My Project/') === 'my-project');
     $another = Actions::handle('worktreeCreate', ['project_id'=>$parent, 'branch'=>'feature/other'])['id'];
     worktreeCheck(ProjectWorkspace::workspacePath(Store::connection()->table('projects')->where('id', $another)->first()) !== $path);
     $legacyId = 'abc123abc123abcd';

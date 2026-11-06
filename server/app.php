@@ -3,8 +3,8 @@
 declare(strict_types=1);
 
 use Crab\App;
-use app\Setup;
-use app\process\CodexServer;
+use App\Setup;
+use App\Process\CodexServer;
 
 // Crabase uses only the core plugins; its setup connects Store and registers the persistent Codex WebSocket server.
 return App::configure(__DIR__)

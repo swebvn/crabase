@@ -1,7 +1,7 @@
 #!/usr/bin/env php
 <?php
 require dirname(__DIR__).'/vendor/autoload.php';
-use app\service\Auth;
+use App\Service\Auth;
 
 function prompt(string $label): string {
     fwrite(STDOUT, $label.': ');
@@ -10,7 +10,7 @@ function prompt(string $label): string {
     return rtrim($value, "\r\n");
 }
 try {
-    app\service\Store::db();
+    App\Service\Store::db();
     $name = prompt('Admin display name');
     $email = prompt('Login email');
     if (!stream_isatty(STDIN)) throw new RuntimeException('Run interactively in a terminal to enter the password securely.');
